@@ -1,0 +1,61 @@
+body { 
+    font-family: Arial, sans-serif;
+    padding: 18px;
+    background:#fafafa;
+    color:#111
+}
+.server { border: 1px solid #ddd;
+    padding: 12px;
+    margin-bottom: 12px;
+    border-radius:6px;
+    background:white;
+}
+pre.logs { max-height: 260px;
+    overflow:auto;
+    background:#0b0b0b;
+    color:#e6e6e6;
+    padding:10px;
+    border-radius:4px;
+    font-family: monospace;
+    font-size:13px;
+}
+.controls { margin-top:8px; }
+input.cmd { width: 70%;
+    padding:6px;
+    font-size:14px;
+}
+button { padding:6px 10px;
+    margin-left:6px;
+}
+
+#login-screen form {
+  background: white;
+  padding: 2rem;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  width: 300px;
+}
+
+#login-screen input {
+  width: 30%;
+  padding: 10px;
+  margin: 8px 0;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+}
+
+#login-screen button {
+  width: 30%;
+  padding: 10px;
+  background: #4facfe;
+  border: none;
+  border-radius: 8px;
+  color: white;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+#login-screen button:hover {
+  background: #3a8bdc;
+}
+
