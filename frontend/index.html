@@ -3,17 +3,54 @@
 <head>
   <meta charset="utf-8" />
   <title>Control Minecraft — Consola en vivo</title>
-  <style>
-    body { font-family: Arial, sans-serif; padding: 18px; background:#fafafa; color:#111 }
-    .server { border: 1px solid #ddd; padding: 12px; margin-bottom: 12px; border-radius:6px; background:white; }
-    pre.logs { max-height: 260px; overflow:auto; background:#0b0b0b; color:#e6e6e6; padding:10px; border-radius:4px; font-family: monospace; font-size:13px; }
-    .controls { margin-top:8px; }
-    input.cmd { width: 70%; padding:6px; font-size:14px; }
-    button { padding:6px 10px; margin-left:6px; }
-  </style>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <h1>Control de servidores Minecraft — Consola en vivo</h1>
+
+  <div id="login-screen">
+    <h2>Iniciar Sesión</h2>
+    <input id="user" placeholder="Usuario" /><br />
+    <input id="pass" placeholder="Contraseña" type="password" /><br />
+    <button onclick="login()">Entrar</button>
+    <p id="login-error" style="color:red;"></p>
+  </div>
+
+  <div id="app" style="display:none; position: relative;">
+  <button onclick="logout()" 
+          style="position: absolute; top: 10px; right: 10px;">
+    Cerrar sesión
+  </button>
+  <h1>Panel de Servidores Minecraft</h1>
+  <div id="servers"></div>
+</div>
+
+   <script>
+    async function login() {
+      const username = document.getElementById('user').value;
+      const password = document.getElementById('pass').value;
+
+      const res = await fetch('/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+
+      if (res.ok) {
+        document.getElementById('login-screen').style.display = 'none';
+        document.getElementById('app').style.display = 'block';
+        refresh(); // refrescar panel de servidores
+      } else {
+        const data = await res.json();
+        document.getElementById('login-error').innerText = data.error;
+      }
+    }
+
+    async function logout() {
+      await fetch('/logout', { method: 'POST' });
+      location.reload();
+    }
+  </script>
+
   <div id="servers"></div>
 
   <script src="/socket.io/socket.io.js"></script>
