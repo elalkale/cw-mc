@@ -199,3 +199,61 @@ io.on('connection', socket => {
 // Inicia HTTP + socket.io
 const PORT = 4000;
 httpServer.listen(PORT, () => console.log(`Servidor backend escuchando en http://localhost:${PORT}`));
+
+
+
+
+
+
+
+
+const session = require('express-session');
+const bcrypt = require('bcrypt');
+
+// Configuración de sesiones
+app.use(session({
+  secret: 'clave-super-secreta',  // cámbialo por algo único y largo
+  resave: false,
+  saveUninitialized: false,
+  cookie: { secure: false } // ⚠️ en producción con HTTPS ponlo en true
+}));
+
+// === Usuarios de prueba ===
+// Más adelante puedes moverlo a una base de datos (SQLite, MySQL, etc)
+const users = [
+  { id: 1, username: 'admin', passwordHash: bcrypt.hashSync('1234', 10) }
+];
+
+// Middleware para verificar login
+function requireLogin(req, res, next) {
+  if (req.session.userId) {
+    next();
+  } else {
+    res.status(401).json({ error: 'No autenticado' });
+  }
+}
+
+// Ruta de login
+app.post('/login', (req, res) => {
+  const { username, password } = req.body;
+  const user = users.find(u => u.username === username);
+  if (!user) return res.status(400).json({ error: 'Usuario no encontrado' });
+
+  if (!bcrypt.compareSync(password, user.passwordHash)) {
+    return res.status(400).json({ error: 'Contraseña incorrecta' });
+  }
+
+  // Guardar sesión
+  req.session.userId = user.id;
+  res.json({ ok: true });
+});
+
+// Ruta de logout
+app.post('/logout', (req, res) => {
+  req.session.destroy(() => {
+    res.json({ ok: true });
+  });
+});
+
+// Proteger todas las rutas /api/*
+app.use('/api', requireLogin);
