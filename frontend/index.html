@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <title>Control Minecraft — Consola en vivo</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 18px; background:#fafafa; color:#111 }
+    .server { border: 1px solid #ddd; padding: 12px; margin-bottom: 12px; border-radius:6px; background:white; }
+    pre.logs { max-height: 260px; overflow:auto; background:#0b0b0b; color:#e6e6e6; padding:10px; border-radius:4px; font-family: monospace; font-size:13px; }
+    .controls { margin-top:8px; }
+    input.cmd { width: 70%; padding:6px; font-size:14px; }
+    button { padding:6px 10px; margin-left:6px; }
+  </style>
+</head>
+<body>
+  <h1>Control de servidores Minecraft — Consola en vivo</h1>
+  <div id="servers"></div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const API = '/api';
+    const socket = io(); // se conecta al mismo host/origen
+    const openLogsSet = new Set();
+
+    // Al recibir nuevo log (emisión por servidor)
+    socket.on('log', ({ server, line }) => {
+      appendLogLine(server, line);
+    });
+
+    // Al recibir el historial inicial
+    socket.on('log_history', ({ server, logs }) => {
+      setLogs(server, logs || '');
+    });
+
+    // Opciones para feedback de comandos
+    socket.on('cmd_sent', data => console.log('cmd_sent', data));
+    socket.on('cmd_queued', data => console.log('cmd_queued', data));
+    socket.on('cmd_error', data => console.warn('cmd_error', data));
+
+    // Actualiza estado y renderiza tarjetas
+    async function refresh() {
+      const res = await fetch(`${API}/status`);
+      const data = await res.json();
+      const container = document.getElementById('servers');
+      container.innerHTML = '';
+      for (const [name, s] of Object.entries(data)) {
+        const div = document.createElement('div');
+        div.className = 'server';
+        div.innerHTML = `
+          <h2>${name}</h2>
+          <p>running: <strong>${s.running}</strong> ${s.pid ? '(PID: ' + s.pid + ')' : ''}</p>
+          <p>ping: ${s.ping && s.ping.up ? 'UP — players: ' + (s.ping.players ?? 'n/a') : 'DOWN'}</p>
+          <div class="controls">
+            <button onclick="start('${name}')">Start</button>
+            <button onclick="stop('${name}')">Stop</button>
+            <button onclick="openLogs('${name}')">Ver Logs</button>
+            <button onclick="closeLogs('${name}')">Ocultar Logs</button>
+          </div>
+          <pre id="logs-${name}" class="logs" style="display:none;"></pre>
+
+          <div style="margin-top:8px;">
+            <input id="cmd-${name}" class="cmd" type="text" placeholder="Escribe comando y pulsa Enter..." ${s.running ? '' : 'disabled'} />
+            <button onclick="sendCommand('${name}')">Enviar</button>
+            <button onclick="sendCommandAndShow('${name}', 'list')">list</button>
+            <button onclick="sendCommandAndShow('${name}', 'say Hola desde web')">say</button>
+          </div>
+        `;
+        container.appendChild(div);
+
+        // Mantener estado del logs abierto tras refresh
+        if (openLogsSet.has(name)) {
+          openLogs(name);
+        }
+        // Bind Enter key for input
+        const input = document.getElementById('cmd-' + name);
+        input && input.addEventListener('keydown', (ev) => {
+          if (ev.key === 'Enter') {
+            sendCommand(name);
+          }
+        });
+      }
+    }
+
+    // funciones start/stop via HTTP
+    async function start(name) {
+      await fetch(`${API}/start`, { method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ name })});
+      setTimeout(refresh, 800);
+    }
+    async function stop(name) {
+      await fetch(`${API}/stop`, { method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ name })});
+      setTimeout(refresh, 800);
+    }
+
+    // Open logs: solicita historial y se une a room socket.io
+    async function openLogs(name) {
+      // pedir historial via socket: join
+      socket.emit('join', name);
+      // mostrar caja
+      const pre = document.getElementById('logs-' + name);
+      pre.style.display = 'block';
+      openLogsSet.add(name);
+
+      // también obtener logs via HTTP (historial) para tenerlos inmediatamente:
+      try {
+        const r = await fetch(`${API}/logs/${name}`);
+        const text = await r.text();
+        setLogs(name, text);
+      } catch (err) {
+        console.warn('No se pudieron cargar logs HTTP', err);
+      }
+    }
+
+    function closeLogs(name) {
+      const pre = document.getElementById('logs-' + name);
+      pre.style.display = 'none';
+      openLogsSet.delete(name);
+    }
+
+    function setLogs(name, text) {
+      const pre = document.getElementById('logs-' + name);
+      if (!pre) return;
+      pre.textContent = text;
+      pre.scrollTop = pre.scrollHeight;
+    }
+
+    function appendLogLine(name, line) {
+      const pre = document.getElementById('logs-' + name);
+      if (!pre) return;
+      pre.textContent += line;
+      // mantener scroll abajo:
+      pre.scrollTop = pre.scrollHeight;
+    }
+
+    // Enviar comando por socket
+    function sendCommand(name) {
+      const input = document.getElementById('cmd-' + name);
+      if (!input) return;
+      const cmd = input.value.trim();
+      if (!cmd) return;
+      socket.emit('command', { server: name, command: cmd });
+      input.value = '';
+      // opcional: mostrar el comando enviado en logs
+      appendLogLine(name, `> ${cmd}\n`);
+    }
+
+    // Atajo: enviar un comando concreto y mostrar logs
+    function sendCommandAndShow(name, cmd) {
+      openLogs(name);
+      socket.emit('command', { server: name, command: cmd });
+      appendLogLine(name, `> ${cmd}\n`);
+    }
+
+    // refrescar cada 4s (para estado); logs son por socket.io
+    refresh();
+    setInterval(refresh, 4000);
+  </script>
+</body>
+</html>
