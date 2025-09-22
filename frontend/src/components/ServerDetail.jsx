@@ -92,7 +92,7 @@ export default function ServerDetail({ server, data, onStart, onStop, onBack }) 
 
       {/* Logs */}
       {logsVisible && (
-        <pre ref={preRef} className="h-96 overflow-y-scroll bg-gray-100 dark:bg-gray-700 p-3 rounded-md text-sm text-gray-800 dark:text-gray-200">
+        <pre ref={preRef} className="h-96 overflow-y-scroll bg-gray-200 dark:bg-gray-700 p-3 rounded-md text-sm text-gray-800 dark:text-gray-200">
           {logs}
         </pre>
       )}
