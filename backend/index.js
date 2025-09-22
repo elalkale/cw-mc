@@ -113,9 +113,27 @@ apiRouter.get('/status', async (req, res) => {
   for (const [name, state] of Object.entries(servers)) {
     const running = state.process && !state.process.killed;
     const ping = await checkMinecraft(state.cfg).catch(() => ({ up: false }));
-    result[name] = { running: !!running, pid: running ? state.process.pid : null, ping };
+
+    // Comprobar si existe el server-icon.png
+    const iconPath = path.join(state.cfg.dir, 'server-icon.png');
+    const iconUrl = fs.existsSync(iconPath)
+      ? `/server-icons/${name}/server-icon.png`
+      : null;
+
+    result[name] = { running: !!running, pid: running ? state.process.pid : null, ping, icon: iconUrl };
   }
   res.json(result);
+});
+// Endpoint para devolver el icono de un servidor específico
+apiRouter.get('/server-icon/:name', (req, res) => {
+  const { name } = req.params;
+  const iconPath = path.join(SERVER_ROOT, name, 'server-icon.png');
+
+  if (!fs.existsSync(iconPath)) {
+    return res.status(404).send('No icon');
+  }
+
+  res.sendFile(iconPath);
 });
 
 apiRouter.post('/start', (req, res) => {

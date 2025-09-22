@@ -43,6 +43,21 @@ export default function ServerCard({ server, data, onStart, onStop, onOpen }) {
       onClick={onOpen} // click en toda la card para entrar
       className="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 flex flex-col space-y-4 transition-colors cursor-pointer hover:shadow-lg"
     >
+        <div className="flex items-center gap-3">
+    {data.icon ? (
+  <img
+    src={`http://localhost:4000/api/server-icon/${server}`}
+    alt={`${server} icon`}
+    className="w-12 h-12 rounded-md object-cover"
+  />
+) : (
+  <div className="w-12 h-12 rounded-md bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-gray-500">
+    🎮
+  </div>
+)}
+
+  <h3 className="text-xl font-semibold text-purple-600 dark:text-purple-400">{server}</h3>
+</div>
       <h3 className="text-xl font-semibold text-purple-600 dark:text-purple-400">{server}</h3>
 
       <p className="text-gray-700 dark:text-gray-300">
