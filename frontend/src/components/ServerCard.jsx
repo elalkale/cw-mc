@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { io } from 'socket.io-client';
 
-export default function ServerCard({ server, data, onStart, onStop }) {
+export default function ServerCard({ server, data, onStart, onStop, onOpen }) {
   const [logs, setLogs] = useState('');
   const [logsVisible, setLogsVisible] = useState(false);
   const [command, setCommand] = useState('');
@@ -38,25 +38,47 @@ export default function ServerCard({ server, data, onStart, onStop }) {
     }
   };
 
-  return (
-    <div style={{ border: '1px solid #ccc', padding: 10, margin: 10 }}>
-      <h3>{server}</h3>
-      <p>Running: {data.running ? '✅' : '❌'} {data.pid ? `(PID: ${data.pid})` : ''}</p>
-      <p>Ping: {data.ping?.up ? `UP — players: ${data.ping.players}` : 'DOWN'}</p>
+ return (
+    <div
+      onClick={onOpen} // click en toda la card para entrar
+      className="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 flex flex-col space-y-4 transition-colors cursor-pointer hover:shadow-lg"
+    >
+      <h3 className="text-xl font-semibold text-purple-600 dark:text-purple-400">{server}</h3>
 
-      <button onClick={() => onStart(server)}>Start</button>
-      <button onClick={() => onStop(server)}>Stop</button>
-      <button onClick={() => setLogsVisible(!logsVisible)}>
-        {logsVisible ? 'Ocultar Logs' : 'Ver Logs'}
-      </button>
+      <p className="text-gray-700 dark:text-gray-300">
+        Running: {data.running ? '✅ Activo' : '❌ Detenido'}{' '}
+        {data.pid ? `(PID: ${data.pid})` : ''}
+      </p>
 
-      {logsVisible && <pre ref={preRef} style={{ height: 200, overflowY: 'scroll', background: '#eee', padding: 5 }}>{logs}</pre>}
+      <p className={`${data.ping?.up ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'} font-medium`}>
+        Ping: {data.ping?.up ? `UP — players: ${data.ping.players}` : 'DOWN'}
+      </p>
 
-      <div>
-        <input value={command} onChange={e => setCommand(e.target.value)} placeholder="Comando..." disabled={!data.running} />
-        <button onClick={sendCommand} disabled={!data.running}>Enviar</button>
+      <div className="flex gap-2">
+        <button
+          onClick={(e) => { e.stopPropagation(); onStart(server); }}
+          disabled={data.running}
+          className={`flex-1 py-2 rounded-lg font-medium text-white transition-colors ${
+            data.running
+              ? 'bg-gray-300 dark:bg-gray-600 cursor-not-allowed'
+              : 'bg-purple-600 hover:bg-purple-700 dark:bg-purple-500 dark:hover:bg-purple-600'
+          }`}
+        >
+          Start
+        </button>
+
+        <button
+          onClick={(e) => { e.stopPropagation(); onStop(server); }}
+          disabled={!data.running}
+          className={`flex-1 py-2 rounded-lg font-medium text-white transition-colors ${
+            !data.running
+              ? 'bg-gray-300 dark:bg-gray-600 cursor-not-allowed'
+              : 'bg-red-600 hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600'
+          }`}
+        >
+          Stop
+        </button>
       </div>
     </div>
   );
 }
-

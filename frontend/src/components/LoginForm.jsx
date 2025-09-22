@@ -26,12 +26,41 @@ export default function LoginForm({ onLogin }) {
   };
 
   return (
-    <div style={{ padding: 20 }}>
-      <h2>Login</h2>
-      <input placeholder="Usuario" value={username} onChange={e => setUser(e.target.value)} /><br/>
-      <input type="password" placeholder="Contraseña" value={password} onChange={e => setPass(e.target.value)} /><br/>
-      <button onClick={login}>Entrar</button>
-      <p style={{ color: 'red' }}>{error}</p>
+  <div className="flex items-center justify-center min-h-screen bg-gray-100">
+    <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-sm">
+      <h2 className="text-3xl font-extrabold mb-6 text-purple-600 text-center">
+        Login
+      </h2>
+
+      <input
+        className="w-full mb-4 p-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-400 transition"
+        placeholder="Usuario"
+        value={username}
+        onChange={e => setUser(e.target.value)}
+      />
+
+      <input
+        type="password"
+        className="w-full mb-4 p-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-400 transition"
+        placeholder="Contraseña"
+        value={password}
+        onChange={e => setPass(e.target.value)}
+      />
+
+      <button
+        onClick={login}
+        className="w-full bg-purple-600 hover:bg-purple-700 text-white py-3 rounded-xl font-semibold shadow-md transition transform hover:scale-105"
+      >
+        Entrar
+      </button>
+
+      {error && <p className="text-red-500 mt-3 text-center">{error}</p>}
+
+      <p className="text-sm text-gray-500 mt-4 text-center">
+        ¿No tienes cuenta? <span className="text-purple-600 font-medium cursor-pointer hover:underline">Regístrate</span>
+      </p>
     </div>
-  );
+  </div>
+);
+
 }
