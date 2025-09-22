@@ -66,7 +66,7 @@ export default function App() {
     <div className={darkMode ? "dark" : ""}>
       
       <div className="min-h-screen bg-gray-100 dark:bg-gray-900 p-6 relative transition-colors">
-      <Navbar darkMode={darkMode} toggleDarkMode={toggleDarkMode} />
+      <Navbar darkMode={darkMode} toggleDarkMode={toggleDarkMode} onLogout={logout} />
       <div className="max-w-7xl mx-auto mt-6">
 
         {/* Dashboard o detalle */}

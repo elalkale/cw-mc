@@ -57,6 +57,7 @@ app.post('/logout', (req, res) => {
   req.session.destroy(() => res.json({ ok: true }));
 });
 
+
 // --- Detectar servidores automáticamente ---
 const SERVER_ROOT = path.resolve(__dirname, '..', 'servers');
 const servers = {};
@@ -99,6 +100,12 @@ async function checkMinecraft(cfg) {
 // --- Endpoints API ---
 const apiRouter = express.Router();
 apiRouter.use(requireLogin);
+
+apiRouter.get('/me', (req, res) => {
+  if (!req.session.userId) return res.json({ loggedIn: false });
+  const user = users.find(u => u.id === req.session.userId);
+  res.json({ loggedIn: true, username: user?.username });
+});
 
 apiRouter.get('/status', async (req, res) => {
   refreshServers();
