@@ -68,6 +68,9 @@ export default function ServerCard({ server, data, onStart, onStop, onOpen }) {
       <p className={`${data.ping?.up ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'} font-medium`}>
         Ping: {data.ping?.up ? `UP — players: ${data.ping.players}` : 'DOWN'}
       </p>
+      <p className="text-gray-700 dark:text-gray-300">
+        Version: {data.version || 'N/A'}
+      </p>
 
       <div className="flex gap-2">
         <button

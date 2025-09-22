@@ -62,6 +62,22 @@ app.post('/logout', (req, res) => {
 const SERVER_ROOT = path.resolve(__dirname, '..', 'servers');
 const servers = {};
 
+// --- Detectar versión del servidor --- //
+function getServerVersion(dir) {
+  try {
+    const files = fs.readdirSync(dir);
+    const jar = files.find(f => f.endsWith('.jar'));
+    if (jar) {
+      const match = jar.match(/(\d+\.\d+(\.\d+)?)/); // ej: 1.20.1
+      if (match) return match[1];
+      return jar; // si no matchea, devolvemos el nombre del jar
+    }
+  } catch (err) {
+    console.error('Error leyendo versión en', dir, err);
+  }
+  return 'Desconocida';
+}
+
 // Función para refrescar servidores en memoria
 function refreshServers() {
   const folders = fs.readdirSync(SERVER_ROOT, { withFileTypes: true })
@@ -70,19 +86,23 @@ function refreshServers() {
 
   folders.forEach((folder) => {
     if (!servers[folder]) {
+      const dir = path.join(SERVER_ROOT, folder);
       servers[folder] = {
         cfg: {
           name: folder,
-          dir: path.join(SERVER_ROOT, folder),
+          dir,
           startCmd: 'start.bat',
           host: 'localhost',
           port: 25565 + Object.keys(servers).length, // asigna puerto incremental
+          version: getServerVersion(dir), // 👈 añadimos versión
         },
         process: null,
         logs: '',
         commandQueue: []
       };
-      console.log(`Servidor nuevo detectado automáticamente: ${folder}`);
+      console.log(
+        `Servidor nuevo detectado automáticamente: ${folder} (versión: ${servers[folder].cfg.version})`
+      );
     }
   });
 }
@@ -120,10 +140,17 @@ apiRouter.get('/status', async (req, res) => {
       ? `/server-icons/${name}/server-icon.png`
       : null;
 
-    result[name] = { running: !!running, pid: running ? state.process.pid : null, ping, icon: iconUrl };
+    result[name] = {
+      running: !!running,
+      pid: running ? state.process.pid : null,
+      ping,
+      icon: iconUrl,
+      version: state.cfg.version // 👈 nueva propiedad
+    };
   }
   res.json(result);
 });
+
 // Endpoint para devolver el icono de un servidor específico
 apiRouter.get('/server-icon/:name', (req, res) => {
   const { name } = req.params;
