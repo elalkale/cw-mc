@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { FaMoon, FaEllipsisV } from 'react-icons/fa';
+import { Link } from 'react-router-dom'; // 👈 importar Link
 
 export default function Navbar({ darkMode, toggleDarkMode, onLogout }) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -17,18 +18,22 @@ export default function Navbar({ darkMode, toggleDarkMode, onLogout }) {
   }, []);
 
   return (
-<nav className="sticky top-0 w-full bg-white dark:bg-gray-800 shadow-md z-50">
+    <nav className="sticky top-0 w-full bg-white dark:bg-gray-800 shadow-md z-50">
       <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
 
-        {/* Logo o título */}
-        <h1 className="text-xl font-bold text-purple-600 dark:text-purple-400">Panel Minecraft</h1>
+        {/* Logo o título con Link a Home */}
+        <Link to="/" className="text-xl font-bold text-purple-600 dark:text-purple-400 hover:underline">
+          Panel Minecraft
+        </Link>
 
         <div className="flex items-center gap-4 relative">
           {/* Botón modo oscuro */}
           <button
             onClick={toggleDarkMode}
             className={`p-2 rounded-full transition-colors duration-300 ${
-              darkMode ? 'bg-purple-600 text-white' : 'bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-200'
+              darkMode
+                ? 'bg-purple-600 text-white'
+                : 'bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-200'
             }`}
           >
             <FaMoon />
@@ -56,7 +61,6 @@ export default function Navbar({ darkMode, toggleDarkMode, onLogout }) {
             )}
           </div>
         </div>
-
       </div>
     </nav>
   );

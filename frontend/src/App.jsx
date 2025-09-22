@@ -1,8 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import LoginForm from './components/LoginForm.jsx';
-import ServerCard from './components/ServerCard.jsx';
-import ServerDetail from './components/ServerDetail.jsx';
-import Navbar from './components/Navbar.jsx';
+import React, { useState, useEffect } from "react";
+import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
+
+import LoginForm from "./components/LoginForm.jsx";
+import Navbar from "./components/Navbar.jsx";
+import Home from "./pages/Home.jsx";
+import Dashboard from "./pages/Dashboard.jsx";
 
 export default function App() {
   const [loggedIn, setLoggedIn] = useState(false);
@@ -12,10 +14,11 @@ export default function App() {
 
   const toggleDarkMode = () => setDarkMode(prev => !prev);
 
-
   const fetchStatus = async () => {
     try {
-      const res = await fetch('http://localhost:4000/api/status', { credentials: 'include' });
+      const res = await fetch("http://localhost:4000/api/status", {
+        credentials: "include",
+      });
       if (res.ok) {
         const data = await res.json();
         setServers(data);
@@ -23,7 +26,7 @@ export default function App() {
         setLoggedIn(false);
       }
     } catch (err) {
-      console.error('Error fetchStatus:', err);
+      console.error("Error fetchStatus:", err);
     }
   };
 
@@ -36,70 +39,56 @@ export default function App() {
   }, [loggedIn]);
 
   const startServer = async (name) => {
-    await fetch('http://localhost:4000/api/start', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ name })
+    await fetch("http://localhost:4000/api/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ name }),
     });
     setTimeout(fetchStatus, 1000);
   };
 
   const stopServer = async (name) => {
-    await fetch('http://localhost:4000/api/stop', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ name })
+    await fetch("http://localhost:4000/api/stop", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ name }),
     });
     setTimeout(fetchStatus, 1000);
   };
 
   const logout = async () => {
-    await fetch('http://localhost:4000/logout', { method: 'POST', credentials: 'include' });
+    await fetch("http://localhost:4000/logout", { method: "POST", credentials: "include" });
     setLoggedIn(false);
   };
 
   if (!loggedIn) return <LoginForm onLogin={() => setLoggedIn(true)} />;
 
   return (
-    <div className={darkMode ? "dark" : ""}>
-      
-      <div className="min-h-screen bg-gray-100 dark:bg-gray-900 p-6 relative transition-colors">
-      <Navbar darkMode={darkMode} toggleDarkMode={toggleDarkMode} onLogout={logout} />
-      <div className="max-w-7xl mx-auto mt-6">
+    <Router>
+      <div className={darkMode ? "dark" : ""}>
+        <div className="min-h-screen bg-gray-100 dark:bg-gray-900 p-6 relative transition-colors">
+          <Navbar darkMode={darkMode} toggleDarkMode={toggleDarkMode} onLogout={logout} />
 
-        {/* Dashboard o detalle */}
-        {activeServer ? (
-          <ServerDetail
-            server={activeServer}
-            data={servers[activeServer]}
-            onStart={startServer}
-            onStop={stopServer}
-            onBack={() => setActiveServer(null)}
-          />
-        ) : (
-          <>
-            <h1 className="text-3xl font-bold text-purple-600 dark:text-purple-400 mb-8 text-center">
-              Panel de Servidores Minecraft
-            </h1>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {Object.entries(servers).map(([name, data]) => (
-                <ServerCard
-                  key={name}
-                  server={name}
-                  data={data}
-                  onStart={startServer}
-                  onStop={stopServer}
-                  onOpen={() => setActiveServer(name)}
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route
+              path="/dashboard"
+              element={
+                <Dashboard
+                  servers={servers}
+                  activeServer={activeServer}
+                  setActiveServer={setActiveServer}
+                  startServer={startServer}
+                  stopServer={stopServer}
                 />
-              ))}
-            </div>
-          </>
-        )}
+              }
+            />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
         </div>
       </div>
-    </div>
+    </Router>
   );
 }
