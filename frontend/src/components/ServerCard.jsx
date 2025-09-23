@@ -1,25 +1,27 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { io } from 'socket.io-client';
+import React, { useEffect, useRef, useState } from "react";
+import { io } from "socket.io-client";
+import { Maximize2, Minimize2 } from "lucide-react";
 
 export default function ServerCard({ server, data, onStart, onStop, onOpen }) {
-  const [logs, setLogs] = useState('');
+  const [logs, setLogs] = useState("");
   const [logsVisible, setLogsVisible] = useState(false);
-  const [command, setCommand] = useState('');
+  const [command, setCommand] = useState("");
+  const [expanded, setExpanded] = useState(false); // 👈 nuevo estado
   const preRef = useRef();
 
   const socket = useRef(null);
 
   useEffect(() => {
-    socket.current = io('http://localhost:4000', { withCredentials: true });
+    socket.current = io("http://localhost:4000", { withCredentials: true });
 
-    socket.current.emit('join', server);
+    socket.current.emit("join", server);
 
-    socket.current.on('log', ({ server: srv, line }) => {
-      if (srv === server) setLogs(prev => prev + line);
+    socket.current.on("log", ({ server: srv, line }) => {
+      if (srv === server) setLogs((prev) => prev + line);
     });
 
-    socket.current.on('log_history', ({ server: srv, logs }) => {
-      if (srv === server) setLogs(logs || '');
+    socket.current.on("log_history", ({ server: srv, logs }) => {
+      if (srv === server) setLogs(logs || "");
     });
 
     return () => {
@@ -33,70 +35,146 @@ export default function ServerCard({ server, data, onStart, onStop, onOpen }) {
 
   const sendCommand = () => {
     if (command && socket.current) {
-      socket.current.emit('command', { server, command });
-      setCommand('');
+      socket.current.emit("command", { server, command });
+      setCommand("");
     }
   };
 
- return (
+  return (
     <div
-      onClick={onOpen} // click en toda la card para entrar
-      className="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 flex flex-col space-y-4 transition-colors cursor-pointer hover:shadow-lg"
+      className={`bg-white dark:bg-gray-800 p-5 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 transition-all 
+      ${expanded ? "col-span-full" : "cursor-pointer hover:shadow-lg"}`}
     >
+      {/* Header con icono, nombre y botón expandir */}
+      <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-3">
-    {data.icon ? (
-  <img
-    src={`http://localhost:4000/api/server-icon/${server}`}
-    alt={`${server} icon`}
-    className="w-12 h-12 rounded-md object-cover"
-  />
-) : (
-  <div className="w-12 h-12 rounded-md bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-gray-500">
-    🎮
-  </div>
-)}
+          {data.icon ? (
+            <img
+              src={`http://localhost:4000/api/server-icon/${server}`}
+              alt={`${server} icon`}
+              className="w-12 h-12 rounded-md object-cover"
+            />
+          ) : (
+            <div className="w-12 h-12 rounded-md bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-gray-500">
+              🎮
+            </div>
+          )}
+          <h3 className="text-xl font-semibold text-purple-600 dark:text-purple-400">
+            {server}
+          </h3>
+        </div>
 
-  <h3 className="text-xl font-semibold text-purple-600 dark:text-purple-400">{server}</h3>
-</div>
-      <h3 className="text-xl font-semibold text-purple-600 dark:text-purple-400">{server}</h3>
-
-      <p className="text-gray-700 dark:text-gray-300">
-        Running: {data.running ? '✅ Activo' : '❌ Detenido'}{' '}
-        {data.pid ? `(PID: ${data.pid})` : ''}
-      </p>
-
-      <p className={`${data.ping?.up ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'} font-medium`}>
-        Ping: {data.ping?.up ? `UP — players: ${data.ping.players}` : 'DOWN'}
-      </p>
-      <p className="text-gray-700 dark:text-gray-300">
-        Version: {data.version || 'N/A'}
-      </p>
-
-      <div className="flex gap-2">
+        {/* Botón para expandir/contraer */}
         <button
-          onClick={(e) => { e.stopPropagation(); onStart(server); }}
-          disabled={data.running}
-          className={`flex-1 py-2 rounded-lg font-medium text-white transition-colors ${
-            data.running
-              ? 'bg-gray-300 dark:bg-gray-600 cursor-not-allowed'
-              : 'bg-purple-600 hover:bg-purple-700 dark:bg-purple-500 dark:hover:bg-purple-600'
-          }`}
+          onClick={() => setExpanded(!expanded)}
+          className="p-2 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700"
         >
-          Start
-        </button>
-
-        <button
-          onClick={(e) => { e.stopPropagation(); onStop(server); }}
-          disabled={!data.running}
-          className={`flex-1 py-2 rounded-lg font-medium text-white transition-colors ${
-            !data.running
-              ? 'bg-gray-300 dark:bg-gray-600 cursor-not-allowed'
-              : 'bg-red-600 hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600'
-          }`}
-        >
-          Stop
+          {expanded ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
         </button>
       </div>
+
+      {/* Vista compacta */}
+      {!expanded && (
+        <>
+          <p className="text-gray-700 dark:text-gray-300">
+            Running: {data.running ? "✅ Activo" : "❌ Detenido"}{" "}
+            {data.pid ? `(PID: ${data.pid})` : ""}
+          </p>
+
+          <p
+            className={`${
+              data.ping?.up
+                ? "text-green-600 dark:text-green-400"
+                : "text-red-500 dark:text-red-400"
+            } font-medium`}
+          >
+            Ping: {data.ping?.up ? `UP — players: ${data.ping.players}` : "DOWN"}
+          </p>
+
+          <p className="text-gray-700 dark:text-gray-300">
+            Version: {data.version || "N/A"}
+          </p>
+
+          <div className="flex gap-2 mt-3">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onStart(server);
+              }}
+              disabled={data.running}
+              className={`flex-1 py-2 rounded-lg font-medium text-white transition-colors ${
+                data.running
+                  ? "bg-gray-300 dark:bg-gray-600 cursor-not-allowed"
+                  : "bg-purple-600 hover:bg-purple-700 dark:bg-purple-500 dark:hover:bg-purple-600"
+              }`}
+            >
+              Start
+            </button>
+
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onStop(server);
+              }}
+              disabled={!data.running}
+              className={`flex-1 py-2 rounded-lg font-medium text-white transition-colors ${
+                !data.running
+                  ? "bg-gray-300 dark:bg-gray-600 cursor-not-allowed"
+                  : "bg-red-600 hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600"
+              }`}
+            >
+              Stop
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* Vista expandida */}
+      {expanded && (
+        <div className="space-y-4">
+          <p className="text-gray-700 dark:text-gray-300">
+            Estado:{" "}
+            <span
+              className={
+                data.running ? "text-green-600 font-bold" : "text-red-600 font-bold"
+              }
+            >
+              {data.running ? "Encendido" : "Apagado"}
+            </span>
+          </p>
+
+          <p className="text-gray-700 dark:text-gray-300">
+            Versión: {data.version || "N/A"}
+          </p>
+
+          <div>
+            <p className="font-medium mb-2">Logs:</p>
+            <pre
+              ref={preRef}
+              className="bg-gray-100 dark:bg-gray-900 p-2 rounded-md h-40 overflow-y-auto text-xs"
+            >
+              {logs || "Sin logs aún..."}
+            </pre>
+          </div>
+
+          {/* Input para comandos */}
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={command}
+              onChange={(e) => setCommand(e.target.value)}
+              placeholder="Escribe un comando..."
+              className="flex-1 px-3 py-2 rounded-lg border dark:border-gray-700 bg-gray-50 dark:bg-gray-700 dark:text-white"
+            />
+            <button
+              onClick={sendCommand}
+              className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg"
+            >
+              Enviar
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

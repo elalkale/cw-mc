@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 
 import LoginForm from "./components/LoginForm.jsx";
-import Navbar from "./components/Navbar.jsx";
+import Layout from "./Layout.jsx";   // ahora Layout incluye Navbar
 import Home from "./pages/Home.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
 
@@ -68,23 +68,32 @@ export default function App() {
   return (
     <Router>
       <div className={darkMode ? "dark" : ""}>
-        <div className="min-h-screen bg-gray-100 dark:bg-gray-900 p-6 relative transition-colors">
-          <Navbar darkMode={darkMode} toggleDarkMode={toggleDarkMode} onLogout={logout} />
-
+        <div className="min-h-screen bg-gray-100 dark:bg-gray-900 relative transition-colors">
           <Routes>
-            <Route path="/" element={<Home />} />
             <Route
-              path="/dashboard"
+              path="/"
               element={
-                <Dashboard
-                  servers={servers}
-                  activeServer={activeServer}
-                  setActiveServer={setActiveServer}
-                  startServer={startServer}
-                  stopServer={stopServer}
+                <Layout
+                  darkMode={darkMode}
+                  toggleDarkMode={toggleDarkMode}
+                  onLogout={logout}
                 />
               }
-            />
+            >
+              <Route index element={<Home />} />
+              <Route
+                path="dashboard"
+                element={
+                  <Dashboard
+                    servers={servers}
+                    activeServer={activeServer}
+                    setActiveServer={setActiveServer}
+                    startServer={startServer}
+                    stopServer={stopServer}
+                  />
+                }
+              />
+            </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </div>

@@ -8,7 +8,7 @@ export default function Home() {
         Bienvenido al Panel de Minecraft
       </h1>
 
-      <h2 className="text-2xl font-bold text-purple-600 dark:text-purple-400 mb-4">Developed By Alejandro R. and Jesús G.</h2>
+      <h2 className="text-2xl font-bold text-purple-600 dark:text-purple-400 mb-4">Developed By Alejandro S. and Jesús G.</h2>
       <img
         src="frontend\src\assets\creators.jpg"
         alt="Alejandro R. y Jesús G."
