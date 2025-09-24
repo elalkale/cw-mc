@@ -35,7 +35,7 @@ export default function ServerDetail({ server, data, onStart, onStop, onBack }) 
     };
 
     return (
-        <div className="flex flex-col space-y-4">
+        <div className="flex flex-col space-y-4 px-4 max-w-6xl mx-auto">
 
             <button
                 onClick={onBack}
@@ -110,7 +110,7 @@ export default function ServerDetail({ server, data, onStart, onStop, onBack }) 
 
             {/* Logs */}
             {logsVisible && (
-                <pre ref={preRef} className="h-96 overflow-y-scroll bg-gray-200 dark:bg-gray-700 p-3 rounded-md text-sm text-gray-800 dark:text-gray-200">
+                <pre ref={preRef} className="h-96 overflow-y-scroll bg-gray-200 dark:bg-gray-700 p-3 rounded-md text-sm text-gray-800 dark:text-gray-200 px-4">
                     {logs}
                 </pre>
             )}
