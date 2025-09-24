@@ -57,7 +57,6 @@ app.post('/logout', (req, res) => {
   req.session.destroy(() => res.json({ ok: true }));
 });
 
-
 // --- Detectar servidores automáticamente ---
 const SERVER_ROOT = path.resolve(__dirname, '..', 'servers');
 const servers = {};
@@ -68,9 +67,9 @@ function getServerVersion(dir) {
     const files = fs.readdirSync(dir);
     const jar = files.find(f => f.endsWith('.jar'));
     if (jar) {
-      const match = jar.match(/(\d+\.\d+(\.\d+)?)/); // ej: 1.20.1
+      const match = jar.match(/(\d+\.\d+(\.\d+)?)/);
       if (match) return match[1];
-      return jar; // si no matchea, devolvemos el nombre del jar
+      return jar;
     }
   } catch (err) {
     console.error('Error leyendo versión en', dir, err);
@@ -93,8 +92,8 @@ function refreshServers() {
           dir,
           startCmd: 'start.bat',
           host: 'localhost',
-          port: 25565 + Object.keys(servers).length, // asigna puerto incremental
-          version: getServerVersion(dir), // 👈 añadimos versión
+          port: 25565 + Object.keys(servers).length,
+          version: getServerVersion(dir),
         },
         process: null,
         logs: '',
@@ -111,21 +110,23 @@ function refreshServers() {
 async function checkMinecraft(cfg) {
   try {
     const s = await mcStatus(cfg.host, cfg.port, { timeout: 2000 });
-    return { up: true, players: s.players?.online ?? null, motd: s.motd?.clean ?? null };
+    return {
+      up: true,
+      players: {
+        online: s.players?.online ?? 0,
+        max: s.players?.max ?? 0,
+        sample: s.players?.sample ?? [] // 👈 añadimos lista de jugadores
+      },
+      motd: s.motd?.clean ?? null
+    };
   } catch {
-    return { up: false };
+    return { up: false, players: { online: 0, max: 0, sample: [] } };
   }
 }
 
 // --- Endpoints API ---
 const apiRouter = express.Router();
 apiRouter.use(requireLogin);
-
-apiRouter.get('/me', (req, res) => {
-  if (!req.session.userId) return res.json({ loggedIn: false });
-  const user = users.find(u => u.id === req.session.userId);
-  res.json({ loggedIn: true, username: user?.username });
-});
 
 apiRouter.get('/status', async (req, res) => {
   refreshServers();
@@ -134,7 +135,6 @@ apiRouter.get('/status', async (req, res) => {
     const running = state.process && !state.process.killed;
     const ping = await checkMinecraft(state.cfg).catch(() => ({ up: false }));
 
-    // Comprobar si existe el server-icon.png
     const iconPath = path.join(state.cfg.dir, 'server-icon.png');
     const iconUrl = fs.existsSync(iconPath)
       ? `/server-icons/${name}/server-icon.png`
@@ -145,11 +145,13 @@ apiRouter.get('/status', async (req, res) => {
       pid: running ? state.process.pid : null,
       ping,
       icon: iconUrl,
-      version: state.cfg.version // 👈 nueva propiedad
+      version: state.cfg.version,
+      players: ping.players // 👈 aquí devolvemos players completos
     };
   }
   res.json(result);
 });
+
 
 // Endpoint para devolver el icono de un servidor específico
 apiRouter.get('/server-icon/:name', (req, res) => {

@@ -1,3 +1,4 @@
+// App.jsx
 import React, { useState, useEffect } from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 
@@ -11,9 +12,9 @@ export default function App() {
   const [servers, setServers] = useState({});
   const [darkMode, setDarkMode] = useState(false);
   const [activeServer, setActiveServer] = useState(null);
-  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false); // 👈 modal logout
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
-  const toggleDarkMode = () => setDarkMode(prev => !prev);
+  const toggleDarkMode = () => setDarkMode((prev) => !prev);
 
   const fetchStatus = async () => {
     try {
@@ -59,6 +60,20 @@ export default function App() {
     setTimeout(fetchStatus, 1000);
   };
 
+  // 👇 NUEVO: enviar comandos al servidor
+  const sendCommand = async (name, command) => {
+    try {
+      await fetch("http://localhost:4000/api/command", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ name, command }),
+      });
+    } catch (err) {
+      console.error("Error sendCommand:", err);
+    }
+  };
+
   const logout = async () => {
     await fetch("http://localhost:4000/logout", {
       method: "POST",
@@ -77,26 +92,26 @@ export default function App() {
           <Navbar
             darkMode={darkMode}
             toggleDarkMode={toggleDarkMode}
-            onLogout={() => setShowLogoutConfirm(true)} // 👈 dispara modal
+            onLogout={() => setShowLogoutConfirm(true)}
           />
           <div className="pt-12">
-          <Routes>
-            <Route index element={<Home />} />
-            <Route
-              path="dashboard"
-              element={
-                <Dashboard
-                  servers={servers}
-                  activeServer={activeServer}
-                  setActiveServer={setActiveServer}
-                  startServer={startServer}
-                  stopServer={stopServer}
-                />
-              }
-            />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-
+            <Routes>
+              <Route index element={<Home />} />
+              <Route
+                path="dashboard"
+                element={
+                  <Dashboard
+                    servers={servers}
+                    activeServer={activeServer}
+                    setActiveServer={setActiveServer}
+                    startServer={startServer}
+                    stopServer={stopServer}
+                    sendCommand={sendCommand} // 👈 pasamos la función al Dashboard
+                  />
+                }
+              />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
           </div>
 
           {/* Modal de confirmación */}
