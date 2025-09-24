@@ -4,9 +4,8 @@ import { Maximize2, Minimize2 } from "lucide-react";
 
 export default function ServerCard({ server, data, onStart, onStop, onOpen }) {
   const [logs, setLogs] = useState("");
-  const [logsVisible, setLogsVisible] = useState(false);
   const [command, setCommand] = useState("");
-  const [expanded, setExpanded] = useState(false); // 👈 nuevo estado
+  const [expanded, setExpanded] = useState(false);
   const preRef = useRef();
 
   const socket = useRef(null);
@@ -42,11 +41,14 @@ export default function ServerCard({ server, data, onStart, onStop, onOpen }) {
 
   return (
     <div
-      className={`bg-white dark:bg-gray-800 p-5 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 transition-all 
-      ${expanded ? "col-span-full" : "cursor-pointer hover:shadow-lg"}`}
+      className={`bg-white dark:bg-gray-800 p-5 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 transition-all ${expanded ? "col-span-full" : "hover:shadow-lg"
+        }`
+
+      }
+      onClick={() => onOpen(server)}
     >
-      {/* Header con icono, nombre y botón expandir */}
-      <div className="flex items-center justify-between mb-3">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
           {data.icon ? (
             <img
@@ -64,37 +66,53 @@ export default function ServerCard({ server, data, onStart, onStop, onOpen }) {
           </h3>
         </div>
 
-        {/* Botón para expandir/contraer */}
         <button
-          onClick={() => setExpanded(!expanded)}
+          onClick={(e) => {
+            e.stopPropagation();
+            setExpanded(!expanded)
+          }}
           className="p-2 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700"
         >
           {expanded ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
         </button>
       </div>
 
-      {/* Vista compacta */}
-      {!expanded && (
-        <>
-          <p className="text-gray-700 dark:text-gray-300">
-            Running: {data.running ? "✅ Activo" : "❌ Detenido"}{" "}
-            {data.pid ? `(PID: ${data.pid})` : ""}
-          </p>
-
-          <p
-            className={`${
-              data.ping?.up
-                ? "text-green-600 dark:text-green-400"
-                : "text-red-500 dark:text-red-400"
-            } font-medium`}
+      {/* Información principal (siempre igual) */}
+      <div className="space-y-2">
+        <p className="text-gray-700 dark:text-gray-300">
+          Estado:{" "}
+          <span
+            className={
+              data.running
+                ? "text-green-600 font-semibold"
+                : "text-red-600 font-semibold"
+            }
           >
-            Ping: {data.ping?.up ? `UP — players: ${data.ping.players}` : "DOWN"}
-          </p>
+            {data.running ? "Activo" : "Detenido"}
+          </span>{" "}
+          {data.pid && `(PID: ${data.pid})`}
+        </p>
 
-          <p className="text-gray-700 dark:text-gray-300">
-            Version: {data.version || "N/A"}
-          </p>
+        <p
+          className={`${data.ping?.up
+              ? "text-green-600 dark:text-green-400"
+              : "text-red-500 dark:text-red-400"
+            } font-medium`}
+        >
+          Ping: {data.ping?.up ? `UP — players: ${data.ping.players}` : "DOWN"}
+        </p>
 
+        <p className="text-gray-700 dark:text-gray-300">
+          Versión: {data.version || "N/A"}
+        </p>
+
+
+      </div>
+
+      {/* Detalles solo si expandido */}
+      {expanded && (
+
+        <div className="mt-4 space-y-4">
           <div className="flex gap-2 mt-3">
             <button
               onClick={(e) => {
@@ -102,11 +120,10 @@ export default function ServerCard({ server, data, onStart, onStop, onOpen }) {
                 onStart(server);
               }}
               disabled={data.running}
-              className={`flex-1 py-2 rounded-lg font-medium text-white transition-colors ${
-                data.running
+              className={`flex-1 py-2 rounded-lg font-medium text-white transition-colors ${data.running
                   ? "bg-gray-300 dark:bg-gray-600 cursor-not-allowed"
                   : "bg-purple-600 hover:bg-purple-700 dark:bg-purple-500 dark:hover:bg-purple-600"
-              }`}
+                }`}
             >
               Start
             </button>
@@ -117,36 +134,14 @@ export default function ServerCard({ server, data, onStart, onStop, onOpen }) {
                 onStop(server);
               }}
               disabled={!data.running}
-              className={`flex-1 py-2 rounded-lg font-medium text-white transition-colors ${
-                !data.running
+              className={`flex-1 py-2 rounded-lg font-medium text-white transition-colors ${!data.running
                   ? "bg-gray-300 dark:bg-gray-600 cursor-not-allowed"
                   : "bg-red-600 hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600"
-              }`}
+                }`}
             >
               Stop
             </button>
           </div>
-        </>
-      )}
-
-      {/* Vista expandida */}
-      {expanded && (
-        <div className="space-y-4">
-          <p className="text-gray-700 dark:text-gray-300">
-            Estado:{" "}
-            <span
-              className={
-                data.running ? "text-green-600 font-bold" : "text-red-600 font-bold"
-              }
-            >
-              {data.running ? "Encendido" : "Apagado"}
-            </span>
-          </p>
-
-          <p className="text-gray-700 dark:text-gray-300">
-            Versión: {data.version || "N/A"}
-          </p>
-
           <div>
             <p className="font-medium mb-2">Logs:</p>
             <pre
@@ -157,7 +152,6 @@ export default function ServerCard({ server, data, onStart, onStop, onOpen }) {
             </pre>
           </div>
 
-          {/* Input para comandos */}
           <div className="flex gap-2">
             <input
               type="text"

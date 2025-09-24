@@ -33,21 +33,19 @@ export default function Dashboard({
             <div className="flex gap-2">
               <button
                 onClick={() => setViewMode("grid")}
-                className={`p-2 rounded-lg ${
-                  viewMode === "grid"
+                className={`p-2 rounded-lg ${viewMode === "grid"
                     ? "bg-purple-600 text-white"
                     : "bg-gray-200 dark:bg-gray-700"
-                }`}
+                  }`}
               >
                 <LayoutGrid size={20} />
               </button>
               <button
                 onClick={() => setViewMode("list")}
-                className={`p-2 rounded-lg ${
-                  viewMode === "list"
+                className={`p-2 rounded-lg ${viewMode === "list"
                     ? "bg-purple-600 text-white"
                     : "bg-gray-200 dark:bg-gray-700"
-                }`}
+                  }`}
               >
                 <List size={20} />
               </button>

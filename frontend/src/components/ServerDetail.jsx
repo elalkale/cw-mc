@@ -71,7 +71,7 @@ export default function ServerDetail({ server, data, onStart, onStop, onBack }) 
             <p className={`${data.ping?.up ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'} font-medium`}>
                 Ping: {data.ping?.up ? `UP — players: ${data.ping.players}` : 'DOWN'}
             </p>
-            
+
             <p className="text-gray-700 dark:text-gray-300">
                 Version: {data.version || 'N/A'}
             </p>
@@ -116,7 +116,7 @@ export default function ServerDetail({ server, data, onStart, onStop, onBack }) 
             )}
 
             {/* Input de comandos */}
-            <div className="flex gap-2">
+            <div className="flex gap-2 pt-2 pb-8 px-4">
                 <input
                     value={command}
                     onChange={e => setCommand(e.target.value)}
@@ -135,6 +135,8 @@ export default function ServerDetail({ server, data, onStart, onStop, onBack }) 
                     Enviar
                 </button>
             </div>
+           
         </div>
+
     );
 }
