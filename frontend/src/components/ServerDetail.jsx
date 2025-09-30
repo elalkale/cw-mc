@@ -34,14 +34,15 @@ export default function ServerDetail({ server, data, onStart, onStop, onBack }) 
     }
   };
 
-  return (
-    <div className="flex flex-col space-y-4 px-4 max-w-6xl mx-auto">
-      <button
-        onClick={onBack}
-        className="bg-gray-300 dark:bg-gray-700 text-gray-800 dark:text-gray-200 px-4 py-2 rounded-lg w-fit"
-      >
-        ← Volver
-      </button>
+    return (
+        <div className="flex flex-col space-y-4">
+
+            <button
+                onClick={onBack}
+                className="bg-gray-300 dark:bg-gray-700 text-gray-800 dark:text-gray-200 px-4 py-2 rounded-lg w-fit"
+            >
+                ← Volver
+            </button>
 
       {/* Encabezado */}
       <div className="flex items-center gap-3">
@@ -141,15 +142,12 @@ export default function ServerDetail({ server, data, onStart, onStop, onBack }) 
         </div>
       </div>
 
-      {/* Logs */}
-      {logsVisible && (
-        <pre
-          ref={preRef}
-          className="h-96 overflow-y-scroll bg-gray-200 dark:bg-gray-700 p-3 rounded-md text-sm text-gray-800 dark:text-gray-200 px-4"
-        >
-          {logs}
-        </pre>
-      )}
+            {/* Logs */}
+            {logsVisible && (
+                <pre ref={preRef} className="h-96 overflow-y-scroll bg-gray-200 dark:bg-gray-700 p-3 rounded-md text-sm text-gray-800 dark:text-gray-200">
+                    {logs}
+                </pre>
+            )}
 
       {/* Input de comandos */}
       <div className="flex gap-2 pt-2 pb-8 px-4">
