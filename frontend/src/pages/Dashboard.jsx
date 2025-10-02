@@ -63,6 +63,12 @@ export default function Dashboard({
                 >
                   Tormenta
                 </button>
+                <button
+                  onClick={() => sendCommand(activeServer, "op akalex07")}
+                  className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg"
+                >
+                  OP
+                </button>
               </div>
             </div>
           </div>
