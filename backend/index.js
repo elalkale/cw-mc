@@ -304,6 +304,290 @@ apiRouter.get('/files/:name/content', async (req, res) => {
   }
 });
 
+apiRouter.put('/files/:name/content', async (req, res) => {
+  refreshServers();
+  const { name } = req.params;
+  const state = servers[name];
+
+  if (!state) {
+    return res.status(404).json({ error: 'Servidor no encontrado' });
+  }
+
+  const relativePath = req.query.path;
+  const { content } = req.body;
+
+  if (!relativePath) {
+    return res.status(400).json({ error: 'Falta proveer el parámetro path' });
+  }
+  if (content === undefined) {
+    return res.status(400).json({ error: 'Falta proveer el contenido a guardar' });
+  }
+
+  const targetPath = path.join(state.cfg.dir, relativePath);
+
+  // Verificamos protección Anti-Path Traversal
+  if (!targetPath.startsWith(state.cfg.dir)) {
+    return res.status(403).json({ error: 'Acceso denegado a esta ruta' });
+  }
+
+  try {
+    // Verificamos que no sea una carpeta
+    if (fs.existsSync(targetPath)) {
+      const stats = await fs.promises.stat(targetPath);
+      if (stats.isDirectory()) {
+        return res.status(400).json({ error: 'No se puede sobrescribir una carpeta con texto' });
+      }
+    }
+
+    // Guardamos el nuevo contenido (sobrescribiendo)
+    await fs.promises.writeFile(targetPath, content, 'utf8');
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('Error guardando archivo:', error);
+    res.status(500).json({ error: 'Error interno al guardar el archivo' });
+  }
+});
+
+import archiver from 'archiver';
+import multer from 'multer';
+import os from 'os';
+
+const upload = multer({ dest: os.tmpdir() });
+
+apiRouter.get('/backup/:name', async (req, res) => {
+  refreshServers();
+  const { name } = req.params;
+  const state = servers[name];
+
+  if (!state) {
+    return res.status(404).json({ error: 'Servidor no encontrado' });
+  }
+
+  try {
+    const archive = archiver('zip', {
+      zlib: { level: 9 } // Compresión máxima
+    });
+
+    // Indicar al navegador que es una descarga de archivo
+    res.attachment(`${name}_backup.zip`);
+
+    archive.on('error', function (err) {
+      console.error('Error en archiver:', err);
+      if (!res.headersSent) {
+        res.status(500).send({ error: err.message });
+      }
+    });
+
+    // Conectar el flujo del archivo comprimido directamente a la respuesta HTTP
+    archive.pipe(res);
+
+    // Comprimir todos los archivos dentro del directorio base del servidor
+    // false significa que no cree un subdirectorio extra con el nombre de la carpeta
+    archive.directory(state.cfg.dir, false);
+
+    await archive.finalize();
+  } catch (error) {
+    console.error('Error inicializando backup:', error);
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Error interno al inicializar backup' });
+    }
+  }
+});
+
+apiRouter.post('/backup/:name/local', async (req, res) => {
+  refreshServers();
+  const { name } = req.params;
+  const state = servers[name];
+
+  if (!state) {
+    return res.status(404).json({ error: 'Servidor no encontrado' });
+  }
+
+  try {
+    const backupDir = path.join(state.cfg.dir, 'backups');
+
+    // Asegurarse de que el directorio backups exista
+    await fs.promises.mkdir(backupDir, { recursive: true });
+
+    // Generar el nombre con la fecha
+    const now = new Date();
+    const dateStr = now.toISOString()
+      .replace(/T/, '_')
+      .replace(/\..+/, '')
+      .replace(/:/g, '-');
+    const filename = `${name}_backup_${dateStr}.zip`;
+    const outputPath = path.join(backupDir, filename);
+
+    // Creamos un stream de escritura al archivo destino
+    const output = fs.createWriteStream(outputPath);
+    const archive = archiver('zip', {
+      zlib: { level: 9 }
+    });
+
+    // Promesa que espera a que archive termine para responder
+    const archiveEnded = new Promise((resolve, reject) => {
+      output.on('close', resolve);
+      archive.on('error', reject);
+    });
+
+    archive.pipe(output);
+    // Ignore the backups folder itself to avoid recursion or huge files
+    archive.glob('**/*', {
+      cwd: state.cfg.dir,
+      ignore: ['backups/**']
+    });
+
+    await archive.finalize();
+    await archiveEnded;
+
+    res.json({ ok: true, filename });
+  } catch (error) {
+    console.error('Error creando backup local:', error);
+    res.status(500).json({ error: 'Error interno guardando backup local' });
+  }
+});
+
+apiRouter.delete('/files/:name/content', async (req, res) => {
+  refreshServers();
+  const { name } = req.params;
+  const state = servers[name];
+
+  if (!state) {
+    return res.status(404).json({ error: 'Servidor no encontrado' });
+  }
+
+  const relativePath = req.query.path;
+
+  if (!relativePath) {
+    return res.status(400).json({ error: 'Falta proveer el parámetro path' });
+  }
+
+  const targetPath = path.join(state.cfg.dir, relativePath);
+
+  // Verificamos protección Anti-Path Traversal (No dejamos que borren cosas fuera de su servidor)
+  // Además, evitamos que borren el directorio raíz del servidor por completo.
+  if (!targetPath.startsWith(state.cfg.dir) || targetPath === state.cfg.dir) {
+    return res.status(403).json({ error: 'Acceso denegado a esta ruta' });
+  }
+
+  try {
+    // fs.promises.rm con recursive borra tanto archivos como carpetas llenas
+    await fs.promises.rm(targetPath, { recursive: true, force: true });
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('Error borrando archivo/carpeta:', error);
+    if (error.code === 'ENOENT') {
+      return res.status(404).json({ error: 'El archivo o carpeta no existe' });
+    }
+    res.status(500).json({ error: 'Error interno al borrar el archivo/carpeta' });
+  }
+});
+
+apiRouter.post('/files/:name/folder', async (req, res) => {
+  refreshServers();
+  const { name } = req.params;
+  const state = servers[name];
+
+  if (!state) return res.status(404).json({ error: 'Servidor no encontrado' });
+
+  const relativePath = req.query.path;
+  const { folderName } = req.body;
+
+  if (!relativePath || !folderName) {
+    return res.status(400).json({ error: 'Faltan parámetros' });
+  }
+
+  const targetPath = path.join(state.cfg.dir, relativePath, folderName);
+
+  if (!targetPath.startsWith(state.cfg.dir)) {
+    return res.status(403).json({ error: 'Acceso denegado a esta ruta' });
+  }
+
+  try {
+    await fs.promises.mkdir(targetPath);
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('Error creando carpeta:', error);
+    if (error.code === 'EEXIST') {
+      return res.status(400).json({ error: 'La carpeta ya existe' });
+    }
+    res.status(500).json({ error: 'Error interno al crear la carpeta' });
+  }
+});
+
+apiRouter.post('/files/:name/file', async (req, res) => {
+  refreshServers();
+  const { name } = req.params;
+  const state = servers[name];
+
+  if (!state) return res.status(404).json({ error: 'Servidor no encontrado' });
+
+  const relativePath = req.query.path;
+  const { fileName } = req.body;
+
+  if (!relativePath || !fileName) {
+    return res.status(400).json({ error: 'Faltan parámetros' });
+  }
+
+  const targetPath = path.join(state.cfg.dir, relativePath, fileName);
+
+  if (!targetPath.startsWith(state.cfg.dir)) {
+    return res.status(403).json({ error: 'Acceso denegado a esta ruta' });
+  }
+
+  try {
+    // Si ya existe, evitamos sobrescribirlo con este endpoint
+    if (fs.existsSync(targetPath)) {
+      return res.status(400).json({ error: 'El archivo ya existe' });
+    }
+    // Creamos archivo vacío
+    await fs.promises.writeFile(targetPath, '', 'utf8');
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('Error creando archivo:', error);
+    res.status(500).json({ error: 'Error interno al crear el archivo' });
+  }
+});
+
+apiRouter.post('/files/:name/upload', upload.single('file'), async (req, res) => {
+  refreshServers();
+  const { name } = req.params;
+  const state = servers[name];
+
+  if (!state) return res.status(404).json({ error: 'Servidor no encontrado' });
+
+  // Si no llega archivo
+  if (!req.file) {
+    return res.status(400).json({ error: 'No se envió ningún archivo' });
+  }
+
+  const relativePath = req.query.path || '/';
+
+  // Destino original dentro del servidor
+  const targetPath = path.join(state.cfg.dir, relativePath, req.file.originalname);
+
+  // Verificamos path traversal
+  if (!targetPath.startsWith(state.cfg.dir)) {
+    // Limpiamos la basura si trataba de hackearnos
+    await fs.promises.unlink(req.file.path).catch(() => { });
+    return res.status(403).json({ error: 'Acceso denegado a esta ruta' });
+  }
+
+  try {
+    // Si queremos sobreescribir, usamos rename. Sino tendríamos que validar. Aquí sobreescribiremos por default en subidas
+    // `rename` de `fs.promises` a veces falla entre discos diferentes en Windows (p. ej. temp en C:\ y server en D:\).
+    // Lo más seguro es usar copyFile y luego unlink.
+    await fs.promises.copyFile(req.file.path, targetPath);
+    await fs.promises.unlink(req.file.path);
+
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('Error guardando archivo subido:', error);
+    await fs.promises.unlink(req.file.path).catch(() => { }); // Limpiar temp si falla
+    res.status(500).json({ error: 'Error interno al procesar el archivo subido' });
+  }
+});
+
 apiRouter.get('/files/:name', async (req, res) => {
   refreshServers();
   const { name } = req.params;

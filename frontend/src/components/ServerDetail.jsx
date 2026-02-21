@@ -40,13 +40,83 @@ export default function ServerDetail({ server, data, onStart, onStop, darkMode }
     }
   };
 
+  const [isBackingUp, setIsBackingUp] = useState(false);
+
+  const downloadBackup = async () => {
+    setIsBackingUp(true);
+    try {
+      const token = localStorage.getItem('authToken');
+      const response = await fetch(`http://localhost:4000/api/backup/${encodeURIComponent(server)}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        let errStr = 'Error al descargar el backup';
+        try {
+          const err = await response.json();
+          errStr = err.error || errStr;
+        } catch (e) { }
+        throw new Error(errStr);
+      }
+
+      // Generar el nombre de archivo directamente en frontend para evitar bloqueos CORS
+      const now = new Date();
+      const dateStr = now.toISOString()
+        .replace(/\..+/, '')
+        .replace(/:/g, '-');
+      const filename = `${server}_backup_${dateStr}.zip`;
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error('Error backup:', error);
+      alert('Error: ' + error.message);
+    } finally {
+      setIsBackingUp(false);
+    }
+  };
+
+  const [isCreatingLocal, setIsCreatingLocal] = useState(false);
+
+  const createLocalBackup = async () => {
+    setIsCreatingLocal(true);
+    try {
+      const token = localStorage.getItem('authToken');
+      const response = await fetch(`http://localhost:4000/api/backup/${encodeURIComponent(server)}/local`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Error al crear backup local');
+
+      alert(`Backup creado correctamente en la carpeta "backups":\n${data.filename}`);
+    } catch (error) {
+      console.error('Error backup local:', error);
+      alert('Error: ' + error.message);
+    } finally {
+      setIsCreatingLocal(false);
+    }
+  };
+
   return (
     <div className="flex flex-col space-y-4">
 
       {/* Encabezado */}
       <div className={`rounded-2xl shadow-lg p-4 md:p-6 border flex items-center gap-3 md:gap-4 flex-wrap transition-colors ${darkMode
-          ? 'bg-gradient-to-br from-gray-800 to-gray-900 border-purple-500/20'
-          : 'bg-gradient-to-br from-gray-100 to-gray-200 border-purple-400/50'
+        ? 'bg-gradient-to-br from-gray-800 to-gray-900 border-purple-500/20'
+        : 'bg-gradient-to-br from-gray-100 to-gray-200 border-purple-400/50'
         }`}>
         {data.icon ? (
           <img
@@ -79,8 +149,8 @@ export default function ServerDetail({ server, data, onStart, onStop, darkMode }
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {/* Status */}
         <div className={`rounded-xl p-4 border transition-colors ${darkMode
-            ? 'bg-gradient-to-br from-gray-800 to-gray-900 border-purple-500/20'
-            : 'bg-gradient-to-br from-gray-100 to-gray-200 border-purple-400/50'
+          ? 'bg-gradient-to-br from-gray-800 to-gray-900 border-purple-500/20'
+          : 'bg-gradient-to-br from-gray-100 to-gray-200 border-purple-400/50'
           }`}>
           <p className={`text-xs font-semibold uppercase mb-2 ${darkMode ? 'text-gray-400' : 'text-gray-700'
             }`}>Estado</p>
@@ -91,8 +161,8 @@ export default function ServerDetail({ server, data, onStart, onStop, darkMode }
               aria-hidden="true"
             />
             <span className={`font-semibold text-sm md:text-base ${data.running
-                ? darkMode ? 'text-green-400' : 'text-green-700'
-                : darkMode ? 'text-red-400' : 'text-red-700'
+              ? darkMode ? 'text-green-400' : 'text-green-700'
+              : darkMode ? 'text-red-400' : 'text-red-700'
               }`}>
               {data.running ? 'Activo' : 'Detenido'}
             </span>
@@ -106,8 +176,8 @@ export default function ServerDetail({ server, data, onStart, onStop, darkMode }
 
         {/* Conexión */}
         <div className={`rounded-xl p-4 border transition-colors ${darkMode
-            ? 'bg-gradient-to-br from-gray-800 to-gray-900 border-purple-500/20'
-            : 'bg-gradient-to-br from-gray-100 to-gray-200 border-purple-400/50'
+          ? 'bg-gradient-to-br from-gray-800 to-gray-900 border-purple-500/20'
+          : 'bg-gradient-to-br from-gray-100 to-gray-200 border-purple-400/50'
           }`}>
           <p className={`text-xs font-semibold uppercase mb-2 ${darkMode ? 'text-gray-400' : 'text-gray-700'
             }`}>Conexión</p>
@@ -117,8 +187,8 @@ export default function ServerDetail({ server, data, onStart, onStop, darkMode }
               aria-hidden="true"
             />
             <span className={`font-semibold text-sm md:text-base ${data.ping?.up
-                ? darkMode ? 'text-green-400' : 'text-green-700'
-                : darkMode ? 'text-red-400' : 'text-red-700'
+              ? darkMode ? 'text-green-400' : 'text-green-700'
+              : darkMode ? 'text-red-400' : 'text-red-700'
               }`}>
               {data.ping?.up ? 'Activa' : 'Caída'}
             </span>
@@ -127,8 +197,8 @@ export default function ServerDetail({ server, data, onStart, onStop, darkMode }
 
         {/* Versión */}
         <div className={`rounded-xl p-4 border transition-colors ${darkMode
-            ? 'bg-gradient-to-br from-gray-800 to-gray-900 border-purple-500/20'
-            : 'bg-gradient-to-br from-gray-100 to-gray-200 border-purple-400/50'
+          ? 'bg-gradient-to-br from-gray-800 to-gray-900 border-purple-500/20'
+          : 'bg-gradient-to-br from-gray-100 to-gray-200 border-purple-400/50'
           }`}>
           <p className={`text-xs font-semibold uppercase mb-2 ${darkMode ? 'text-gray-400' : 'text-gray-700'
             }`}>Versión</p>
@@ -140,17 +210,17 @@ export default function ServerDetail({ server, data, onStart, onStop, darkMode }
       </div>
 
       {/* Botones de control */}
-      <div className="flex gap-2 flex-col sm:flex-row">
+      <div className="flex gap-2 flex-col sm:flex-row flex-wrap">
         <button
           onClick={() => onStart(server)}
           disabled={data.running}
           aria-label={`Iniciar servidor ${server}`}
           aria-disabled={data.running}
           className={`flex-1 py-3 text-sm md:text-base rounded-lg font-semibold transition-all transform ${data.running
-              ? darkMode
-                ? 'bg-gray-700/30 text-gray-500 cursor-not-allowed border border-gray-700/50'
-                : 'bg-gray-300/50 text-gray-500 cursor-not-allowed border border-gray-400/50'
-              : 'bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white shadow-lg hover:shadow-green-500/50 hover:scale-105 active:scale-95'
+            ? darkMode
+              ? 'bg-gray-700/30 text-gray-500 cursor-not-allowed border border-gray-700/50'
+              : 'bg-gray-300/50 text-gray-500 cursor-not-allowed border border-gray-400/50'
+            : 'bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white shadow-lg hover:shadow-green-500/50 hover:scale-105 active:scale-95'
             }`}
         >
           {/* Emoji decorativo oculto para lectores (el aria-label ya dice "Iniciar") */}
@@ -163,10 +233,10 @@ export default function ServerDetail({ server, data, onStart, onStop, darkMode }
           aria-label={`Detener servidor ${server}`}
           aria-disabled={!data.running}
           className={`flex-1 py-3 text-sm md:text-base rounded-lg font-semibold transition-all transform ${!data.running
-              ? darkMode
-                ? 'bg-gray-700/30 text-gray-500 cursor-not-allowed border border-gray-700/50'
-                : 'bg-gray-300/50 text-gray-500 cursor-not-allowed border border-gray-400/50'
-              : 'bg-gradient-to-r from-red-600 to-pink-600 hover:from-red-700 hover:to-pink-700 text-white shadow-lg hover:shadow-red-500/50 hover:scale-105 active:scale-95'
+            ? darkMode
+              ? 'bg-gray-700/30 text-gray-500 cursor-not-allowed border border-gray-700/50'
+              : 'bg-gray-300/50 text-gray-500 cursor-not-allowed border border-gray-400/50'
+            : 'bg-gradient-to-r from-red-600 to-pink-600 hover:from-red-700 hover:to-pink-700 text-white shadow-lg hover:shadow-red-500/50 hover:scale-105 active:scale-95'
             }`}
         >
           <span aria-hidden="true">⏹️ </span>Detener Servidor
@@ -178,20 +248,56 @@ export default function ServerDetail({ server, data, onStart, onStop, darkMode }
           aria-expanded={logsVisible}
           aria-controls={logsId}
           className={`flex-1 py-3 text-sm md:text-base rounded-lg font-semibold border-2 transition-all transform hover:scale-105 active:scale-95 ${darkMode
-              ? 'border-purple-500/50 text-purple-300 hover:bg-purple-500/10'
-              : 'border-purple-400/50 text-purple-600 hover:bg-purple-200/20'
+            ? 'border-purple-500/50 text-purple-300 hover:bg-purple-500/10'
+            : 'border-purple-400/50 text-purple-600 hover:bg-purple-200/20'
             }`}
         >
           <span aria-hidden="true">📋 </span>
           {logsVisible ? 'Ocultar Logs' : 'Ver Logs'}
+        </button>
+
+        {/* Botón para crear un backup local en la carpeta del servidor */}
+        <button
+          onClick={createLocalBackup}
+          disabled={isCreatingLocal}
+          aria-label={`Crear backup local del servidor ${server}`}
+          className={`flex-1 py-3 text-sm md:text-base rounded-lg font-semibold border-2 transition-all transform hover:scale-105 active:scale-95 flex items-center justify-center gap-2 ${darkMode
+            ? 'border-indigo-500/50 text-indigo-300 hover:bg-indigo-500/10'
+            : 'border-indigo-400/50 text-indigo-600 hover:bg-indigo-200/20'
+            } ${isCreatingLocal ? 'opacity-50 cursor-not-allowed scale-100 text-gray-400 border-gray-500' : ''}`}
+        >
+          {isCreatingLocal ? (
+            <span className="w-4 h-4 rounded-full border-2 border-t-transparent border-current animate-spin" aria-hidden="true" />
+          ) : (
+            <span aria-hidden="true">💾 </span>
+          )}
+          {isCreatingLocal ? 'Creando...' : 'Backup Local'}
+        </button>
+
+        {/* Botón para descargar el backup ZIP al PC */}
+        <button
+          onClick={downloadBackup}
+          disabled={isBackingUp}
+          aria-label={`Descargar backup del servidor ${server}`}
+          className={`flex-1 py-3 text-sm md:text-base rounded-lg font-semibold border-2 transition-all transform hover:scale-105 active:scale-95 flex items-center justify-center gap-2 ${darkMode
+            ? 'border-blue-500/50 text-blue-300 hover:bg-blue-500/10'
+            : 'border-blue-400/50 text-blue-600 hover:bg-blue-200/20'
+            } ${isBackingUp ? 'opacity-50 cursor-not-allowed scale-100 text-gray-400 border-gray-500' : ''}`}
+        >
+          {isBackingUp ? (
+            <span className="w-4 h-4 rounded-full border-2 border-t-transparent border-current animate-spin" aria-hidden="true" />
+          ) : (
+            <span aria-hidden="true">⬇️ </span>
+          )}
+          {isBackingUp ? 'Descargando...' : 'Descargar ZIP'}
         </button>
       </div>
 
       {/* Logs */}
       {logsVisible && (
         <div className={`rounded-2xl shadow-lg p-3 md:p-4 border transition-colors ${darkMode
-            ? 'bg-gradient-to-br from-gray-800 to-gray-900 border-purple-500/20'
-            : 'bg-gradient-to-br from-gray-100 to-gray-200 border-purple-400/50'
+          ? 'bg-gradient-to-br from-gray-800 to-gray-900 border-purple-500/20'
+          : 'bg-gradient-to-br from-gray-100 to-gray-200 border-purple-400/50'
           }`}>
           <h3
             id={`${logsId}-label`}
@@ -208,8 +314,8 @@ export default function ServerDetail({ server, data, onStart, onStop, darkMode }
             aria-live="polite"
             aria-atomic="false"
             className={`h-48 sm:h-64 md:h-96 overflow-y-scroll p-3 rounded-lg font-mono border ${darkMode
-                ? 'bg-black/40 text-green-400 border-green-500/20'
-                : 'bg-gray-50 text-green-800 border-green-500/30'
+              ? 'bg-black/40 text-green-400 border-green-500/20'
+              : 'bg-gray-50 text-green-800 border-green-500/30'
               } text-xs md:text-sm`}
           >
             {logs || 'Cargando logs...'}
@@ -219,8 +325,8 @@ export default function ServerDetail({ server, data, onStart, onStop, darkMode }
 
       {/* Input de comandos */}
       <div className={`rounded-2xl shadow-lg p-3 md:p-4 border transition-colors ${darkMode
-          ? 'bg-gradient-to-br from-gray-800 to-gray-900 border-purple-500/20'
-          : 'bg-gradient-to-br from-gray-100 to-gray-200 border-purple-400/50'
+        ? 'bg-gradient-to-br from-gray-800 to-gray-900 border-purple-500/20'
+        : 'bg-gradient-to-br from-gray-100 to-gray-200 border-purple-400/50'
         }`}>
         <h3 className={`text-sm md:text-base font-bold mb-3 ${darkMode ? 'text-purple-300' : 'text-purple-700'
           }`}>
@@ -241,8 +347,8 @@ export default function ServerDetail({ server, data, onStart, onStop, darkMode }
             disabled={!data.running}
             aria-disabled={!data.running}
             className={`flex-1 p-3 text-sm rounded-lg focus:outline-none transition border-2 font-mono ${darkMode
-                ? 'bg-black/40 border-purple-500/30 focus:border-purple-500 text-green-400 placeholder-green-700/50'
-                : 'bg-gray-50 border-purple-500/40 focus:border-purple-600 text-green-800 placeholder-green-700'
+              ? 'bg-black/40 border-purple-500/30 focus:border-purple-500 text-green-400 placeholder-green-700/50'
+              : 'bg-gray-50 border-purple-500/40 focus:border-purple-600 text-green-800 placeholder-green-700'
               }`}
           />
           <button
@@ -251,10 +357,10 @@ export default function ServerDetail({ server, data, onStart, onStop, darkMode }
             aria-label="Enviar comando al servidor"
             aria-disabled={!data.running}
             className={`px-4 md:px-6 py-3 text-sm font-semibold rounded-lg transition-all transform ${!data.running
-                ? darkMode
-                  ? 'bg-gray-700/30 text-gray-500 cursor-not-allowed border border-gray-700/50'
-                  : 'bg-gray-300/50 text-gray-500 cursor-not-allowed border border-gray-400/50'
-                : 'bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white shadow-lg hover:shadow-purple-500/50 hover:scale-105 active:scale-95'
+              ? darkMode
+                ? 'bg-gray-700/30 text-gray-500 cursor-not-allowed border border-gray-700/50'
+                : 'bg-gray-300/50 text-gray-500 cursor-not-allowed border border-gray-400/50'
+              : 'bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white shadow-lg hover:shadow-purple-500/50 hover:scale-105 active:scale-95'
               }`}
           >
             Enviar
