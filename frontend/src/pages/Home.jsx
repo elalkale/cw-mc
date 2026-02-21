@@ -5,8 +5,8 @@ export default function Home({ darkMode }) {
   return (
     <div
       className={`min-h-screen flex flex-col items-center justify-center text-center p-4 md:p-8 relative overflow-hidden transition-colors ${darkMode
-          ? "bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900"
-          : "bg-gradient-to-br from-purple-50 via-white to-purple-100"
+        ? "bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900"
+        : "bg-gradient-to-br from-purple-50 via-white to-purple-100"
         }`}
     >
       {/* Elementos decorativos — aria-hidden para no confundir lectores */}
@@ -30,7 +30,7 @@ export default function Home({ darkMode }) {
         />
 
         <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold bg-gradient-to-r from-purple-300 via-pink-300 to-purple-300 bg-clip-text text-transparent mb-4">
-          Bienvenido al Panel Minecraft
+          Bienvenido a Cube Watcher
         </h1>
 
         {/* Era <h2> pero rompe la jerarquía de encabezados — WCAG 1.3.1 */}
@@ -71,8 +71,8 @@ export default function Home({ darkMode }) {
             disabled
             aria-disabled="true"
             className={`px-8 py-3 text-base rounded-xl font-semibold shadow-lg transition border opacity-60 cursor-not-allowed ${darkMode
-                ? "bg-gray-700/50 text-purple-300 border-purple-500/30"
-                : "bg-gray-100 text-purple-700 border-purple-400/50"
+              ? "bg-gray-700/50 text-purple-300 border-purple-500/30"
+              : "bg-gray-100 text-purple-700 border-purple-400/50"
               }`}
           >
             Documentación

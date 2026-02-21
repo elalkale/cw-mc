@@ -57,7 +57,7 @@ export default function Navbar({ darkMode, toggleDarkMode, onLogout, logoutBtnRe
               className="w-6 h-6 object-contain"
               aria-hidden="true"
             />
-            Minecraft Panel
+            Cube Watcher
           </Link>
 
           {/* ── Links de navegación en ESCRITORIO (ocultos en móvil) ── */}

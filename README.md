@@ -1,263 +1,92 @@
-# Panel de Control de Servidores Minecraft (cw-mc)
+# Cube Watcher (anteriormente cw-mc)
 
-Este proyecto es un panel web para administrar servidores de Minecraft, desarrollado con React, Vite y Express. Permite iniciar, detener y monitorear servidores Minecraft desde una interfaz moderna y fácil de usar.
+**Cube Watcher** es un panel web moderno para administrar servidores de Minecraft, desarrollado con React, Vite y Express. Diseñado meticulosamente para ofrecer una experiencia de usuario premium, permite iniciar, detener y monitorear servidores de Minecraft desde una interfaz accesible, responsiva y estéticamente pulida.
 
-## Estructura del Proyecto
+## ✨ Características Principales
 
-```
+- **Control Total:** Inicia, detén y monitoriza múltiples servidores desde un solo panel.
+- **Logs en Tiempo Real:** Consola integrada alimentada por WebSockets para ver la salida del servidor al instante.
+- **Comandos Rápidos e Interactivos:** Envía comandos directamente al servidor desde la interfaz web, con botones de acceso rápido para acciones comunes (tiempo, clima, op).
+- **Diseño Premium:** Interfaz de usuario rica construida con Tailwind CSS, ofreciendo transiciones suaves, efectos glassmorphism, modo oscuro integrado y una paleta de colores cuidada en tonos púrpuras y rosados.
+- **Accesibilidad (WCAG 2.1 AA):**
+  - Navegación completa por teclado con indicadores de foco personalizados (`:focus-visible`).
+  - Soporte para lectores de pantalla mediante etiquetas ARIA dinámicas, `role="alert"`, `aria-live`, y `aria-hidden` en elementos decorativos.
+  - *Focus traps* en modales (como el diálogo de cierre de sesión) para evitar que el teclado escape del contexto.
+  - Respeto por preferencias del sistema operativo como `prefers-reduced-motion`.
+- **Iconografía Minimalista:** Uso de `lucide-react` para iconos limpios y consistentes en toda la aplicación.
+
+---
+
+## 🏗️ Estructura del Proyecto
+
+```text
 ├── backend/           # Backend Express para autenticación y control de servidores
 │   └── index.js       # API REST y WebSocket para control y logs
 ├── frontend/          # Frontend React + Vite
 │   ├── src/
-│   │   ├── App.jsx            # Componente principal, gestiona rutas y estado global
-│   │   ├── main.jsx           # Punto de entrada React
-│   │   ├── index.css, App.css # Estilos globales
-│   │   ├── assets/            # Imágenes y recursos
+│   │   ├── App.jsx            # Enrutador principal, Focus Traps y estado global
+│   │   ├── main.jsx           # Punto de entrada de React
+│   │   ├── index.css          # Estilos globales y reglas de Accesibilidad (WCAG)
+│   │   ├── assets/            # Imágenes, logo y recursos visuales
 │   │   ├── components/
-│   │   │   ├── LoginForm.jsx      # Formulario de login y verificación de sesión
-│   │   │   ├── Navbar.jsx         # Barra de navegación, modo oscuro y logout
-│   │   │   ├── ServerCard.jsx     # Tarjeta resumen de cada servidor, muestra estado y logs
-│   │   │   ├── ServerDetail.jsx   # Vista detallada de un servidor, logs y comandos
-│   │   │   ├── LogsConsole.jsx    # Consola de logs en tiempo real
+│   │   │   ├── LoginForm.jsx      # Autenticación segura e interfaz responsiva
+│   │   │   ├── Navbar.jsx         # Menú de navegación accesible y toggle de Modo Oscuro
+│   │   │   ├── ServerCard.jsx     # Tarjeta de servidor en vista Grid/Lista
+│   │   │   ├── ServerDetail.jsx   # Vista intrínseca de monitorización y consola
+│   │   │   ├── LogsConsole.jsx    # Componente dedicado para el streaming de terminal
 │   │   ├── pages/
-│   │   │   ├── Home.jsx           # Página de bienvenida
-│   │   │   ├── Dashboard.jsx      # Panel principal, lista y gestiona servidores
-│   ├── public/           # Archivos públicos (favicon, imágenes)
-│   ├── vite.config.js    # Configuración Vite
-│   ├── eslint.config.js  # Configuración ESLint
-├── servers/            # Directorios de servidores Minecraft gestionados
-│   └── ...             # Archivos, mods, logs, configuraciones de cada servidor
-├── package.json        # Dependencias y scripts
-└── README.md           # Documentación
-```
-
-## Descripción de Componentes y Páginas
-
-### `App.jsx`
-- Componente raíz. Maneja el estado global: autenticación, servidores, modo oscuro, servidor activo.
-- Define rutas (`/`, `/dashboard`) y renderiza componentes según el estado.
-- Realiza peticiones al backend para obtener el estado de los servidores y controlar su inicio/detención.
-
-### `main.jsx`
-- Punto de entrada de la app React. Renderiza `<App />` en el DOM.
-
-### `LoginForm.jsx`
-- Formulario de login.
-- Verifica sesión al cargar y permite iniciar sesión contra el backend.
-- Muestra errores y estado de carga.
-
-### `Navbar.jsx`
-- Barra superior con título, botón de modo oscuro y menú de logout.
-- Usa React Icons y gestiona apertura/cierre del menú con click fuera.
-
-### `ServerCard.jsx`
-- Tarjeta para cada servidor en el dashboard.
-- Muestra nombre, icono, estado y logs en tiempo real usando WebSocket.
-- Permite enviar comandos y ver historial de logs.
-
-### `ServerDetail.jsx`
-- Vista detallada de un servidor.
-- Muestra icono, nombre, logs en tiempo real y permite enviar comandos.
-- Botón para volver al dashboard.
-
-### `LogsConsole.jsx`
-- Consola de logs en tiempo real.
-- Se conecta por WebSocket y muestra el historial y nuevos logs.
-
-### `Home.jsx`
-- Página de bienvenida.
-- Presenta el panel y los autores, con imagen y botón para ir al dashboard.
-
-### `Dashboard.jsx`
-- Panel principal tras login.
-- Lista todos los servidores disponibles como `ServerCard`.
-- Permite seleccionar un servidor para ver detalles (`ServerDetail`).
-
-## Backend (`backend/index.js`)
-- API REST con Express para login, logout, verificación de sesión y control de servidores.
-- WebSocket (Socket.io) para logs en tiempo real.
-- Simula usuarios y gestiona sesiones con `express-session`.
-- Usa `minecraft-server-util` para consultar estado de servidores.
-
-## Documentación Técnica
-
-### Arquitectura General
-El sistema se compone de un frontend en React (Vite) y un backend en Express. La comunicación se realiza vía API REST y WebSocket (Socket.io) para logs en tiempo real y comandos.
-
-### Componentes Frontend
-
-- **LoginForm.jsx**: Formulario controlado con React, verifica sesión al cargar usando `/api/me` y permite login vía `/login`. Muestra errores y loading.
-- **Navbar.jsx**: Barra superior con modo oscuro y logout. Usa React Icons y gestiona menú con click fuera.
-- **ServerCard.jsx**: Tarjeta de servidor. Se conecta por WebSocket, muestra logs en tiempo real, estado, icono y permite enviar comandos.
-- **ServerDetail.jsx**: Vista detallada de un servidor. Similar a ServerCard pero con más información y botón para volver.
-- **LogsConsole.jsx**: Consola de logs. Recibe logs por WebSocket y los muestra en un `<pre>` autoscroll.
-- **Home.jsx**: Landing page con presentación y autores.
-- **Dashboard.jsx**: Panel principal. Lista servidores y permite seleccionar uno para ver detalles.
-- **App.jsx**: Componente raíz. Maneja rutas, estado global (login, servidores, modo oscuro, servidor activo) y lógica de comunicación con backend.
-
-### Backend Express
-
-#### Estructura y Formación
-- **index.js**: Punto de entrada. Configura Express, sesiones, CORS, rutas API, WebSocket y sirve el frontend.
-- **Sesiones**: Usa `express-session` para autenticar usuarios. Solo usuarios autenticados pueden acceder a la API y WebSocket.
-- **Gestión de servidores**: Detecta carpetas en `servers/`, asigna puertos, lee versión del jar y gestiona procesos con `child_process.spawn`.
-- **Logs**: Captura stdout/stderr de los procesos y los envía por WebSocket.
-- **Comandos**: Permite enviar comandos a los servidores vía stdin o cola si el proceso no está activo.
-
-#### Endpoints API
-
-Todos los endpoints requieren autenticación (sesión iniciada).
-
-| Método | Endpoint                 | Descripción |
-|--------|--------------------------|-------------|
-| POST   | `/login`                 | Iniciar sesión. Body: `{ username, password }` |
-| POST   | `/logout`                | Cerrar sesión |
-| GET    | `/api/me`                | Verifica sesión activa. Responde `{ loggedIn, username }` |
-| GET    | `/api/status`            | Devuelve estado de todos los servidores detectados |
-| GET    | `/api/server-icon/:name` | Devuelve el icono PNG del servidor (si existe) |
-| POST   | `/api/start`             | Inicia el servidor. Body: `{ name }` |
-| POST   | `/api/stop`              | Detiene el servidor. Body: `{ name }` |
-| GET    | `/api/logs/:name`        | Devuelve los logs actuales del servidor |
-| POST   | `/api/command`           | Envía comando al servidor. Body: `{ name, command }` |
-
-#### Ejemplos de uso de Endpoints
-
----
-
-**POST `/login`**
-- Body:
-```json
-{
-  "username": "admin",
-  "password": "1234"
-}
-```
-- Respuesta exitosa:
-```json
-{ "ok": true }
-```
-- Respuesta error:
-```json
-{ "error": "Usuario o contraseña incorrectos" }
+│   │   │   ├── Home.jsx           # Landing page de presentación
+│   │   │   ├── Dashboard.jsx      # Panel principal con selector de vistas
+│   │   │   ├── ServerDetailPage.jsx # Contenedor detallado con Comandos Rápidos
+│   ├── public/           # Archivos estáticos
+│   ├── vite.config.js    # Configuración de compilación de Vite
+│   ├── eslint.config.js  # Reglas de estilo ES
+├── servers/            # Directorios de los servidores Minecraft locales
+├── package.json        # Dependencias NPM y scripts de ejecución
+└── README.md           # Esta documentación
 ```
 
 ---
 
-**POST `/logout`**
-- Respuesta:
-```json
-{ "ok": true }
-```
+## 🛠️ Tecnologías Utilizadas
+
+- **Frontend:** React 19, Vite, Tailwind CSS v3, React Router DOM v7, Socket.io-client, Lucide React.
+- **Backend:** Node.js, Express 5, Socket.io, express-session, bcrypt.
+- **Integración Minecraft:** `minecraft-server-util` para ping y recolección de metadata de servidores locales.
 
 ---
 
-**GET `/api/me`**
-- Respuesta si logueado:
-```json
-{ "loggedIn": true, "username": "admin" }
-```
-- Respuesta si no logueado:
-```json
-{ "loggedIn": false }
-```
+## 📖 Componentes Destacados
+
+### Frontend
+- **App.jsx**: Orquesta la sesión del usuario de forma reactiva comprobando JWTs y maneja el **Focus Trap** vital para el modal accesible de *Cierre de Sesión*.
+- **Navbar.jsx**: Totalmente responsivo. En escritorio muestra navegación en línea; en móvil colapsa a un cajón deslizante operado mediante teclado y soporte `Escape`.
+- **ServerCard.jsx / ServerDetail.jsx**: Interfaces interactivas para leer información estructurada (jugadores online, ping, estado PID del proceso Node hijo) y ver la transmisión de consola web en vivo de cada servidor individual.
+
+### Backend (`backend/index.js`)
+Actúa como capa middleware entre el cliente web y los demonios de Java nativos o servidores bedrock. 
+- Emplea `child_process.spawn`.
+- Gestiona la asignación de puertos dinámicamente según subcarpetas dentro del directorio `servers/`.
+- Ofrece endpoints robustos de API y una sesión controlada por token JWT.
 
 ---
 
-**GET `/api/status`**
-- Respuesta:
-```json
-{
-  "Servidor1": {
-    "running": true,
-    "pid": 1234,
-    "ping": { "up": true, "players": 5, "motd": "Bienvenido" },
-    "icon": "/server-icons/Servidor1/server-icon.png",
-    "version": "1.21.1"
-  },
-  "Servidor2": { ... }
-}
-```
+## 🔌 Referencia Rápida de Endpoint API
+
+*El backend se expone en `localhost:4000` y requiere el encabezado `Authorization: Bearer <token>`.*
+
+| Método | Ruta | Propósito |
+| :--- | :--- | :--- |
+| **POST** | `/login` | Retorna Token de Sesión. |
+| **POST** | `/logout` | Destruye la sesión actual expuesta. |
+| **GET** | `/api/status` | Polling en tiempo real del estado de procesos del SO y pings de servidores. |
+| **GET** | `/api/server-icon/:name` | Resuelve y entrega dinámicamente el `server-icon.png` desde la subcarpeta local. |
+| **POST** | `/api/start` | Levanta el demonio en subproceso (`spawn`). |
+| **POST** | `/api/stop` | Finaliza el proceso (`stdin: stop`). |
+| **POST** | `/api/command` | Transfiere comandos tipo consola a `stdin`. Si servidor apagado, encola en array interno. |
+
+*La capa de WebSocket sincroniza los logs bidireccionalmente permitiendo múltiples clientes ver las mismas líneas en la consola del frontend simultáneamente reconectando a salas (`socket.join`).*
 
 ---
 
-**GET `/api/server-icon/:name`**
-- Respuesta: Imagen PNG del icono del servidor.
-- Si no existe: status 404.
-
----
-
-**POST `/api/start`**
-- Body:
-```json
-{ "name": "Servidor1" }
-```
-- Respuesta exitosa:
-```json
-{ "ok": true, "pid": 1234 }
-```
-- Error:
-```json
-{ "error": "Servidor no encontrado" }
-```
-
----
-
-**POST `/api/stop`**
-- Body:
-```json
-{ "name": "Servidor1" }
-```
-- Respuesta exitosa:
-```json
-{ "ok": true, "method": "stdin" }
-```
-- Error:
-```json
-{ "error": "No en ejecución" }
-```
-
----
-
-**GET `/api/logs/:name`**
-- Respuesta: Texto plano con los logs actuales del servidor.
-- Error:
-```json
-{ "error": "Servidor no encontrado" }
-```
-
----
-
-**POST `/api/command`**
-- Body:
-```json
-{ "name": "Servidor1", "command": "say Hola!" }
-```
-- Respuesta exitosa:
-```json
-{ "ok": true, "sent": "say Hola!" }
-```
-- Si el servidor no está activo:
-```json
-{ "ok": true, "queued": true }
-```
-- Error:
-```json
-{ "error": "Servidor no encontrado" }
-```
-
----
-
-#### Ejemplos de eventos WebSocket
-
-- `join`:
-  - Cliente envía: `{ server: "Servidor1" }`
-  - Servidor responde: `{ server: "Servidor1", logs: "..." }` (evento `log_history`)
-
-- `log`:
-  - Servidor envía: `{ server: "Servidor1", line: "[INFO] Servidor iniciado" }`
-
-- `command`:
-  - Cliente envía: `{ server: "Servidor1", command: "say Hola!" }`
-  - Servidor responde: `{ server: "Servidor1", command: "say Hola!" }` (evento `cmd_sent`)
-  - Si el comando se pone en cola: `{ server: "Servidor1", command: "say Hola!" }` (evento `cmd_queued`)
-  - Si hay error: `{ server: "Servidor1", error: "Servidor desconocido" }` (evento `cmd_error`)
+> Desarrollado con ❤️ prestando atención al código limpio, la seguridad y estándares modernos de Accesibilidad para todos los usuarios.
