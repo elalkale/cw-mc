@@ -316,7 +316,7 @@ const FileExplorer = ({ serverName }) => {
                                         ? `/${item.name}`
                                         : `${currentPath}/${item.name}`;
                                     fetchFiles(newPath);
-                                } else {
+                                } else if (!item.name.endsWith('.jar') && !item.name.endsWith('.java') && !item.name.endsWith('.zip') && !item.name.endsWith('.rar') && !item.name.endsWith('.7z')) {
                                     // === AHORA LLAMAMOS A LA FUNCIÓN DE LEER ===
                                     openFile(item.name);
                                 }
@@ -325,7 +325,12 @@ const FileExplorer = ({ serverName }) => {
                         >
                             <div className="flex items-center gap-2 flex-1 truncate">
                                 <span className="text-xl shrink-0">
-                                    {item.isDirectory ? '📁' : '📄'}
+                                    {/*me gustaría diferenciar en los no directorios*/}
+                                    {item.isDirectory ? '📁' : item.name.endsWith('.jar') || item.name.endsWith('.java') ? '📦'
+                                        : item.name.endsWith('.txt') ? '📄'
+                                            : item.name.endsWith('.json') ? '📝'
+                                                : item.name.endsWith('.zip') || item.name.endsWith('.rar') || item.name.endsWith('.7z') || item.name.endsWith('.gz') ? '🗜️'
+                                                    : '📄'}
                                 </span>
                                 <span className="truncate">{item.name}</span>
                             </div>
@@ -351,7 +356,9 @@ const FileExplorer = ({ serverName }) => {
                         {/* Cabecera del visor */}
                         <div className="flex justify-between items-center p-4 border-b border-gray-700 shrink-0">
                             <h4 className="text-lg font-bold text-white truncate break-all">
-                                📄 {selectedFile}
+                                {selectedFile.endsWith('.txt') ? '📄'
+                                    : selectedFile.endsWith('.json') ? '📝'
+                                        : '📄'} {selectedFile}
                             </h4>
                             <div className="flex gap-2">
                                 <button

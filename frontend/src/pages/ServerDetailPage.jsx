@@ -117,7 +117,7 @@ export default function ServerDetailPage({ servers, startServer, stopServer, sen
 
         {/* Columna derecha: jugadores conectados */}
         <div className="md:col-span-1">
-          <div className={`rounded-2xl shadow-lg p-4 md:p-6 border transition-colors ${darkMode
+          <div className={`rounded-2xl shadow-lg p-4 md:p-6 border transition-colors h-full ${darkMode
             ? 'bg-gradient-to-br from-gray-800 to-gray-900 border-purple-500/20'
             : 'bg-gradient-to-br from-gray-100 to-gray-200 border-purple-400/50'
             }`}>
