@@ -1,6 +1,7 @@
 import React from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import ServerDetail from '../components/ServerDetail.jsx';
+import FileExplorer from '../components/FileExplorer.jsx';
 import { ArrowLeft } from 'lucide-react';
 
 export default function ServerDetailPage({ servers, startServer, stopServer, sendCommand, darkMode }) {
@@ -38,8 +39,8 @@ export default function ServerDetailPage({ servers, startServer, stopServer, sen
         onClick={() => navigate('/dashboard')}
         aria-label="Volver al Dashboard de servidores"
         className={`w-fit px-4 py-2 text-sm md:text-base rounded-lg transition border flex items-center gap-2 group ${darkMode
-            ? 'bg-purple-600/20 hover:bg-purple-600/40 text-purple-300 border-purple-500/30'
-            : 'bg-purple-200/30 hover:bg-purple-300/30 text-purple-700 border-purple-400/50'
+          ? 'bg-purple-600/20 hover:bg-purple-600/40 text-purple-300 border-purple-500/30'
+          : 'bg-purple-200/30 hover:bg-purple-300/30 text-purple-700 border-purple-400/50'
           }`}
       >
         {/* Flecha decorativa oculta para lectores — el texto "Volver" es suficiente */}
@@ -60,8 +61,8 @@ export default function ServerDetailPage({ servers, startServer, stopServer, sen
 
           {/* Comandos rápidos */}
           <div className={`rounded-2xl shadow-lg p-4 md:p-6 border transition-colors ${darkMode
-              ? 'bg-gradient-to-br from-gray-800 to-gray-900 border-purple-500/20'
-              : 'bg-gradient-to-br from-gray-100 to-gray-200 border-purple-400/50'
+            ? 'bg-gradient-to-br from-gray-800 to-gray-900 border-purple-500/20'
+            : 'bg-gradient-to-br from-gray-100 to-gray-200 border-purple-400/50'
             }`}>
             <h2 className={`text-lg md:text-xl font-bold bg-clip-text text-transparent mb-4 ${darkMode ? 'bg-gradient-to-r from-purple-300 to-pink-300' : 'bg-gradient-to-r from-purple-700 to-pink-700'
               }`}>
@@ -117,8 +118,8 @@ export default function ServerDetailPage({ servers, startServer, stopServer, sen
         {/* Columna derecha: jugadores conectados */}
         <div className="md:col-span-1">
           <div className={`rounded-2xl shadow-lg p-4 md:p-6 border transition-colors ${darkMode
-              ? 'bg-gradient-to-br from-gray-800 to-gray-900 border-purple-500/20'
-              : 'bg-gradient-to-br from-gray-100 to-gray-200 border-purple-400/50'
+            ? 'bg-gradient-to-br from-gray-800 to-gray-900 border-purple-500/20'
+            : 'bg-gradient-to-br from-gray-100 to-gray-200 border-purple-400/50'
             }`}>
             <h3 className={`text-base md:text-lg font-bold bg-clip-text text-transparent mb-4 ${darkMode ? 'bg-gradient-to-r from-purple-300 to-pink-300' : 'bg-gradient-to-r from-purple-700 to-pink-700'
               }`}>
@@ -132,8 +133,8 @@ export default function ServerDetailPage({ servers, startServer, stopServer, sen
                   <div
                     key={p.id}
                     className={`flex items-center gap-2 md:gap-3 p-2 rounded-lg border transition ${darkMode
-                        ? 'bg-purple-500/10 border-purple-500/20 hover:border-purple-500/40'
-                        : 'bg-purple-200/30 border-purple-400/50 hover:border-purple-500/70'
+                      ? 'bg-purple-500/10 border-purple-500/20 hover:border-purple-500/40'
+                      : 'bg-purple-200/30 border-purple-400/50 hover:border-purple-500/70'
                       }`}
                   >
                     <img
@@ -156,6 +157,10 @@ export default function ServerDetailPage({ servers, startServer, stopServer, sen
             </div>
           </div>
         </div>
+      </div>
+      {/* haz que el contenedor siempre tenga 400px de altura */}
+      <div className="mt-4 h-[400px] min-h-[400px]">
+        <FileExplorer serverName={serverName} />
       </div>
     </div>
   );

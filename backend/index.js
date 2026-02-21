@@ -32,9 +32,9 @@ const JWT_SECRET = 'tu-clave-secreta-super-segura-cambiar-en-produccion';
 function verifyToken(req, res, next) {
   const authHeader = req.headers.authorization;
   const token = authHeader && authHeader.split(' ')[1];
-  
+
   if (!token) return res.status(401).json({ error: 'Token no proporcionado' });
-  
+
   jwt.verify(token, JWT_SECRET, (err, user) => {
     if (err) return res.status(403).json({ error: 'Token inválido', loggedIn: false });
     req.user = user;
@@ -51,18 +51,18 @@ const users = [
 app.post('/login', (req, res) => {
   const { username, password } = req.body;
   const user = users.find(u => u.username === username && u.password === password);
-  
+
   if (!user) {
     return res.status(400).json({ error: 'Usuario o contraseña incorrectos', loggedIn: false });
   }
-  
+
   // Generar JWT token
   const token = jwt.sign(
     { id: user.id, username: user.username },
     JWT_SECRET,
     { expiresIn: '24h' }
   );
-  
+
   res.json({ ok: true, token, loggedIn: true });
 });
 
@@ -264,6 +264,99 @@ apiRouter.post('/command', (req, res) => {
   res.status(202).json({ ok: true, queued: true });
 });
 
+apiRouter.get('/files/:name/content', async (req, res) => {
+  refreshServers();
+  const { name } = req.params;
+  const state = servers[name];
+
+  if (!state) {
+    return res.status(404).json({ error: 'Servidor no encontrado' });
+  }
+
+  const relativePath = req.query.path;
+  if (!relativePath) {
+    return res.status(400).json({ error: 'Falta proveer el parámetro path' });
+  }
+
+  const targetPath = path.join(state.cfg.dir, relativePath);
+
+  // Verificamos protección Anti-Path Traversal
+  if (!targetPath.startsWith(state.cfg.dir)) {
+    return res.status(403).json({ error: 'Acceso denegado a esta ruta' });
+  }
+
+  try {
+    // Para asegurarnos de que no crasheamos si envían leer una carpeta como archivo
+    const stats = await fs.promises.stat(targetPath);
+    if (stats.isDirectory()) {
+      return res.status(400).json({ error: 'Esta ruta es una carpeta, no un archivo' });
+    }
+
+    // Leemos el archivo en formato texto (utf8)
+    const content = await fs.promises.readFile(targetPath, 'utf8');
+    res.json({ ok: true, content });
+  } catch (error) {
+    console.error('Error leyendo archivo:', error);
+    if (error.code === 'ENOENT') {
+      return res.status(404).json({ error: 'El archivo no existe' });
+    }
+    res.status(500).json({ error: 'Error interno al leer el archivo' });
+  }
+});
+
+apiRouter.get('/files/:name', async (req, res) => {
+  refreshServers();
+  const { name } = req.params;
+  const state = servers[name];
+
+  if (!state) {
+    return res.status(404).json({ error: 'Servidor no encontrado' });
+  }
+
+  // Obtenemos el path local dentro del servidor, por defecto '/'
+  const relativePath = req.query.path || '/';
+
+  // Construimos la ruta segura para evitar ataques de transversión de directorios (path traversal)
+  // ej: path.join elimina los "../" peligrosos si intentan salir del servidor
+  // En windows y linux esto funciona un poco distinto, resolve lo asegura.
+  const targetPath = path.join(state.cfg.dir, relativePath);
+
+  // Verificamos que al final la ruta a la que se accede sigue dentro de la carpeta del servidor
+  if (!targetPath.startsWith(state.cfg.dir)) {
+    return res.status(403).json({ error: 'Acceso denegado a esta ruta' });
+  }
+
+  try {
+    // Leemos el directorio con la versión de promesas de fs
+    // { withFileTypes: true } hace que nos devuelva objetos donde podemos ver si es archivo o carpeta
+    const items = await fs.promises.readdir(targetPath, { withFileTypes: true });
+
+    // Mapeamos los datos para enviarlos limpios al cliente
+    const resultItems = items.map(item => ({
+      name: item.name,
+      isDirectory: item.isDirectory(),
+    }));
+
+    // Ordenamos la lista: primero carpetas, luego archivos alfabéticamente
+    resultItems.sort((a, b) => {
+      if (a.isDirectory === b.isDirectory) {
+        return a.name.localeCompare(b.name);
+      }
+      return a.isDirectory ? -1 : 1;
+    });
+
+    res.json({ ok: true, currentPath: relativePath, items: resultItems });
+  } catch (error) {
+    console.error('Error leyendo archivos:', error);
+    if (error.code === 'ENOENT') {
+      return res.status(404).json({ error: 'La ruta no existe' });
+    } else if (error.code === 'ENOTDIR') {
+      return res.status(400).json({ error: 'La ruta especificada no es una carpeta' });
+    }
+    res.status(500).json({ error: 'Error interno al leer los archivos' });
+  }
+});
+
 app.use('/api', apiRouter);
 
 // --- Servir frontend ---
@@ -272,14 +365,14 @@ app.use('/', express.static(path.join(__dirname, '..', 'frontend')));
 // Socket.IO
 const httpServer = http.createServer(app);
 const io = new Server(httpServer, {
-  cors: { origin: 'http://localhost:5173', methods: ['GET','POST'], credentials: true }
+  cors: { origin: 'http://localhost:5173', methods: ['GET', 'POST'], credentials: true }
 });
 
 // Validar JWT en Socket.IO
 io.use((socket, next) => {
   const token = socket.handshake.auth.token;
   if (!token) return next(new Error('Token no proporcionado'));
-  
+
   jwt.verify(token, JWT_SECRET, (err, decoded) => {
     if (err) return next(new Error('Token inválido'));
     socket.userId = decoded.id;
