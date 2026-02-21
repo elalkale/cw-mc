@@ -3,6 +3,10 @@
 @tailwind utilities;
 
 /* Puedes agregar CSS adicional si quieres */
+html {
+  scrollbar-gutter: stable;
+}
+
 body {
   @apply bg-gray-100;
 }

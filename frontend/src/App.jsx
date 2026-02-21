@@ -5,22 +5,44 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-d
 import LoginForm from "./components/LoginForm.jsx";
 import Home from "./pages/Home.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
+import ServerDetailPage from "./pages/ServerDetailPage.jsx";
 import Navbar from "./components/Navbar.jsx";
+
+// Helper para hacer fetch con token JWT
+async function fetchWithToken(url, options = {}) {
+  const token = localStorage.getItem('authToken');
+  const headers = {
+    ...options.headers,
+    'Content-Type': 'application/json',
+  };
+  
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  
+  return fetch(url, { ...options, headers });
+}
 
 export default function App() {
   const [loggedIn, setLoggedIn] = useState(false);
   const [servers, setServers] = useState({});
-  const [darkMode, setDarkMode] = useState(false);
-  const [activeServer, setActiveServer] = useState(null);
+  const [darkMode, setDarkMode] = useState(() => {
+    const saved = localStorage.getItem('darkMode');
+    return saved ? JSON.parse(saved) : true; // Por defecto dark mode
+  });
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [loading, setLoading] = useState(true); // Estado de carga inicial
+
+  // Guardar darkMode en localStorage cuando cambia
+  useEffect(() => {
+    localStorage.setItem('darkMode', JSON.stringify(darkMode));
+  }, [darkMode]);
 
   const toggleDarkMode = () => setDarkMode((prev) => !prev);
 
   const fetchStatus = async () => {
     try {
-      const res = await fetch("http://localhost:4000/api/status", {
-        credentials: "include",
-      });
+      const res = await fetchWithToken("http://localhost:4000/api/status");
       if (res.ok) {
         const data = await res.json();
         setServers(data);
@@ -32,6 +54,36 @@ export default function App() {
     }
   };
 
+  // Verificar sesión al cargar la app
+  useEffect(() => {
+    const verifySession = async () => {
+      try {
+        const token = localStorage.getItem('authToken');
+        if (!token) {
+          setLoading(false);
+          return;
+        }
+
+        const res = await fetchWithToken("http://localhost:4000/api/me");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.loggedIn) {
+            setLoggedIn(true);
+          }
+        } else {
+          // Token inválido, limpiarlo
+          localStorage.removeItem('authToken');
+        }
+      } catch (err) {
+        console.error("Error verificando sesión:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    verifySession();
+  }, []);
+
   useEffect(() => {
     if (loggedIn) {
       fetchStatus();
@@ -41,20 +93,16 @@ export default function App() {
   }, [loggedIn]);
 
   const startServer = async (name) => {
-    await fetch("http://localhost:4000/api/start", {
+    await fetchWithToken("http://localhost:4000/api/start", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
       body: JSON.stringify({ name }),
     });
     setTimeout(fetchStatus, 1000);
   };
 
   const stopServer = async (name) => {
-    await fetch("http://localhost:4000/api/stop", {
+    await fetchWithToken("http://localhost:4000/api/stop", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
       body: JSON.stringify({ name }),
     });
     setTimeout(fetchStatus, 1000);
@@ -63,10 +111,8 @@ export default function App() {
   // 👇 NUEVO: enviar comandos al servidor
   const sendCommand = async (name, command) => {
     try {
-      await fetch("http://localhost:4000/api/command", {
+      await fetchWithToken("http://localhost:4000/api/command", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
         body: JSON.stringify({ name, command }),
       });
     } catch (err) {
@@ -75,15 +121,27 @@ export default function App() {
   };
 
   const logout = async () => {
-    await fetch("http://localhost:4000/logout", {
+    await fetchWithToken("http://localhost:4000/logout", {
       method: "POST",
-      credentials: "include",
     });
+    localStorage.removeItem('authToken');
     setLoggedIn(false);
     setShowLogoutConfirm(false);
   };
 
-  if (!loggedIn) return <LoginForm onLogin={() => setLoggedIn(true)} />;
+  // Mostrar pantalla de carga si aún verificamos sesión
+  if (loading) {
+    return (
+      <div className={`flex items-center justify-center min-h-screen ${darkMode ? "bg-gradient-to-br from-purple-900 via-gray-900 to-black" : "bg-gradient-to-br from-purple-100 via-white to-purple-50"}`}>
+        <div className="text-center">
+          <div className={`w-12 h-12 border-4 rounded-full animate-spin mx-auto mb-4 ${darkMode ? "border-purple-500 border-t-transparent" : "border-purple-400 border-t-transparent"}`}></div>
+          <p className={`text-lg font-semibold ${darkMode ? "text-purple-300" : "text-purple-600"}`}>Verificando sesión...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!loggedIn) return <LoginForm onLogin={() => setLoggedIn(true)} darkMode={darkMode} />;
 
   return (
     <Router>
@@ -96,17 +154,28 @@ export default function App() {
           />
           <div className="pt-12">
             <Routes>
-              <Route index element={<Home />} />
+              <Route index element={<Home darkMode={darkMode} />} />
               <Route
                 path="dashboard"
                 element={
                   <Dashboard
                     servers={servers}
-                    activeServer={activeServer}
-                    setActiveServer={setActiveServer}
                     startServer={startServer}
                     stopServer={stopServer}
-                    sendCommand={sendCommand} // 👈 pasamos la función al Dashboard
+                    sendCommand={sendCommand}
+                    darkMode={darkMode}
+                  />
+                }
+              />
+              <Route
+                path="dashboard/:serverName"
+                element={
+                  <ServerDetailPage
+                    servers={servers}
+                    startServer={startServer}
+                    stopServer={stopServer}
+                    sendCommand={sendCommand}
+                    darkMode={darkMode}
                   />
                 }
               />

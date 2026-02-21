@@ -1,159 +1,83 @@
 import React, { useState } from "react";
 import { LayoutGrid, List } from "lucide-react";
 import ServerCard from "../components/ServerCard.jsx";
-import ServerDetail from "../components/ServerDetail.jsx";
 
 export default function Dashboard({
   servers,
-  activeServer,
-  setActiveServer,
   startServer,
   stopServer,
-  sendCommand
+  sendCommand,
+  darkMode
 }) {
   const [viewMode, setViewMode] = useState("grid");
 
   return (
-    <div className="max-w-7xl mx-auto mt-6">
-      {activeServer ? (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Columna principal */}
-          <div className="lg:col-span-2 space-y-6">
-            <ServerDetail
-              server={activeServer}
-              data={servers[activeServer]}
-              onStart={startServer}
-              onStop={stopServer}
-              onBack={() => setActiveServer(null)}
-            />
-
-            {/* Comandos rápidos */}
-            <div className="bg-white dark:bg-gray-800 rounded-xl shadow p-4">
-              <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-3">
-                Comandos Rápidos
-              </h2>
-              <div className="flex flex-wrap gap-3">
-                <button
-                  onClick={() => sendCommand(activeServer, "time set day")}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg"
-                >
-                  Día
-                </button>
-                <button
-                  onClick={() => sendCommand(activeServer, "time set night")}
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg"
-                >
-                  Noche
-                </button>
-                <button
-                  onClick={() => sendCommand(activeServer, "weather clear")}
-                  className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg"
-                >
-                  Clima despejado
-                </button>
-                <button
-                  onClick={() => sendCommand(activeServer, "weather rain")}
-                  className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg"
-                >
-                  Lluvia
-                </button>
-                <button
-                  onClick={() => sendCommand(activeServer, "weather thunder")}
-                  className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg"
-                >
-                  Tormenta
-                </button>
-                <button
-                  onClick={() => sendCommand(activeServer, "op akalex07")}
-                  className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg"
-                >
-                  OP
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Columna derecha: jugadores conectados */}
-          <div>
-            <div className="bg-white dark:bg-gray-800 rounded-xl shadow p-4">
-              <h3 className="text-lg font-semibold mb-3 text-gray-900 dark:text-gray-100">
-                Jugadores conectados ({servers[activeServer]?.players?.online ?? 0})
-              </h3>
-              <div className="flex flex-col gap-3">
-                {servers[activeServer]?.players?.sample?.length > 0 ? (
-                  servers[activeServer].players.sample.map((p) => (
-                    <div key={p.id} className="flex items-center gap-3">
-                      <img
-                        src={`https://crafatar.com/avatars/${p.id}?overlay`}
-                        alt={p.name}
-                        className="w-8 h-8 rounded"
-                      />
-                      <span className="text-gray-800 dark:text-gray-200">
-                        {p.name}
-                      </span>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-gray-500 text-sm">
-                    No hay jugadores conectados
-                  </p>
-                )}
-              </div>
-            </div>
-          </div>
+    <div className={`max-w-7xl mx-auto mt-2 md:mt-6 px-4 md:px-6 transition-colors duration-300 py-4 rounded-lg ${
+      darkMode ? "bg-gray-900" : "bg-gray-50"
+    }`}>
+      <div className="flex items-center justify-between mb-8 flex-col sm:flex-row gap-4">
+        <div>
+          <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent mb-2">
+            Panel de Servidores
+          </h1>
+          <p className={`text-sm md:text-base transition-colors ${
+            darkMode ? "text-gray-400" : "text-gray-700"
+          }`}>Gestiona tus servidores de Minecraft</p>
         </div>
-      ) : (
-        <>
-          <div className="flex items-center justify-between mb-6">
-            <h1 className="text-3xl font-bold text-purple-600 dark:text-purple-400">
-              Panel de Servidores Minecraft
-            </h1>
 
-            <div className="flex gap-2">
-              <button
-                onClick={() => setViewMode("grid")}
-                className={`p-2 rounded-lg ${
-                  viewMode === "grid"
-                    ? "bg-purple-600 text-white"
-                    : "bg-gray-200 dark:bg-gray-700"
-                }`}
-              >
-                <LayoutGrid size={20} />
-              </button>
-              <button
-                onClick={() => setViewMode("list")}
-                className={`p-2 rounded-lg ${
-                  viewMode === "list"
-                    ? "bg-purple-600 text-white"
-                    : "bg-gray-200 dark:bg-gray-700"
-                }`}
-              >
-                <List size={20} />
-              </button>
-            </div>
-          </div>
-
-          <div
-            className={
+        <div className={`flex gap-2 p-1 rounded-lg backdrop-blur-sm border transition-colors ${
+          darkMode ? "bg-gray-800/50 border-purple-500/20" : "bg-gray-200 border-purple-400/50"
+        }`}>
+          <button
+            onClick={() => setViewMode("grid")}
+            className={`px-3 py-2 rounded-md transition flex items-center gap-2 ${
               viewMode === "grid"
-                ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6"
-                : "flex flex-col gap-4"
-            }
+                ? "bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg"
+                : darkMode
+                ? "text-gray-400 hover:text-gray-300"
+                : "text-gray-700 hover:text-gray-900"
+            }`}
           >
-            {Object.entries(servers).map(([name, data]) => (
-              <ServerCard
-                key={name}
-                server={name}
-                data={data}
-                onStart={startServer}
-                onStop={stopServer}
-                onOpen={() => setActiveServer(name)}
-                compact={viewMode === "list"}
-              />
-            ))}
-          </div>
-        </>
-      )}
+            <LayoutGrid size={18} />
+            <span className="hidden sm:inline text-sm">Grid</span>
+          </button>
+          <button
+            onClick={() => setViewMode("list")}
+            className={`px-3 py-2 rounded-md transition flex items-center gap-2 ${
+              viewMode === "list"
+                ? "bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg"
+                : darkMode
+                ? "text-gray-400 hover:text-gray-300"
+                : "text-gray-700 hover:text-gray-900"
+            }`}
+          >
+            <List size={18} />
+            <span className="hidden sm:inline text-sm">Lista</span>
+          </button>
+        </div>
+      </div>
+
+      <div
+        className={
+          viewMode === "grid"
+            ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 py-2 px-3"
+            : darkMode
+                ? "text-gray-400 hover:text-gray-300"
+                : "text-gray-700 hover:text-gray-900"
+        }
+      >
+        {Object.entries(servers).map(([name, data]) => (
+          <ServerCard
+            key={name}
+            server={name}
+            data={data}
+            onStart={startServer}
+            onStop={stopServer}
+            compact={viewMode === "list"}
+            darkMode={darkMode}
+          />
+        ))}
+      </div>
     </div>
   );
 }

@@ -3,7 +3,7 @@ import express from 'express';
 import http from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
-import session from 'express-session';
+import jwt from 'jsonwebtoken';
 import fs from 'fs';
 import path from 'path';
 import { spawn } from 'child_process';
@@ -25,36 +25,68 @@ const corsOptions = {
 };
 app.use(cors(corsOptions));
 
-// --- Sesiones ---
-const sessionMiddleware = session({
-  secret: 'clave-super-secreta',
-  resave: false,
-  saveUninitialized: false,
-  cookie: { secure: false },
-});
-app.use(sessionMiddleware);
+// --- JWT Secret ---
+const JWT_SECRET = 'tu-clave-secreta-super-segura-cambiar-en-produccion';
+
+// --- Token verification middleware ---
+function verifyToken(req, res, next) {
+  const authHeader = req.headers.authorization;
+  const token = authHeader && authHeader.split(' ')[1];
+  
+  if (!token) return res.status(401).json({ error: 'Token no proporcionado' });
+  
+  jwt.verify(token, JWT_SECRET, (err, user) => {
+    if (err) return res.status(403).json({ error: 'Token inválido', loggedIn: false });
+    req.user = user;
+    next();
+  });
+}
 
 // --- Usuarios de ejemplo ---
 const users = [
   { id: 1, username: 'admin', password: '1234' }
 ];
 
-function requireLogin(req, res, next) {
-  if (req.session.userId) return next();
-  res.status(401).json({ error: 'No autenticado' });
-}
-
 // --- Login / Logout ---
 app.post('/login', (req, res) => {
   const { username, password } = req.body;
   const user = users.find(u => u.username === username && u.password === password);
-  if (!user) return res.status(400).json({ error: 'Usuario o contraseña incorrectos' });
-  req.session.userId = user.id;
-  res.json({ ok: true });
+  
+  if (!user) {
+    return res.status(400).json({ error: 'Usuario o contraseña incorrectos', loggedIn: false });
+  }
+  
+  // Generar JWT token
+  const token = jwt.sign(
+    { id: user.id, username: user.username },
+    JWT_SECRET,
+    { expiresIn: '24h' }
+  );
+  
+  res.json({ ok: true, token, loggedIn: true });
 });
 
 app.post('/logout', (req, res) => {
-  req.session.destroy(() => res.json({ ok: true }));
+  // El logout es solo del lado del cliente eliminando el token de localStorage
+  res.json({ ok: true });
+});
+
+// --- Verificar sesión actual ---
+app.get('/api/me', verifyToken, (req, res) => {
+  res.json({ loggedIn: true, user: req.user });
+});
+
+// --- Endpoint público para servir iconos (sin autenticación) ---
+app.get('/api/server-icon/:name', (req, res) => {
+  refreshServers();
+  const { name } = req.params;
+  const iconPath = path.join(SERVER_ROOT, name, 'server-icon.png');
+
+  if (!fs.existsSync(iconPath)) {
+    return res.status(404).json({ error: 'Icono no encontrado' });
+  }
+
+  res.sendFile(iconPath);
 });
 
 // --- Detectar servidores automáticamente ---
@@ -126,7 +158,7 @@ async function checkMinecraft(cfg) {
 
 // --- Endpoints API ---
 const apiRouter = express.Router();
-apiRouter.use(requireLogin);
+apiRouter.use(verifyToken);
 
 apiRouter.get('/status', async (req, res) => {
   refreshServers();
@@ -137,7 +169,7 @@ apiRouter.get('/status', async (req, res) => {
 
     const iconPath = path.join(state.cfg.dir, 'server-icon.png');
     const iconUrl = fs.existsSync(iconPath)
-      ? `/server-icons/${name}/server-icon.png`
+      ? `/api/server-icon/${encodeURIComponent(name)}`
       : null;
 
     result[name] = {
@@ -152,18 +184,6 @@ apiRouter.get('/status', async (req, res) => {
   res.json(result);
 });
 
-
-// Endpoint para devolver el icono de un servidor específico
-apiRouter.get('/server-icon/:name', (req, res) => {
-  const { name } = req.params;
-  const iconPath = path.join(SERVER_ROOT, name, 'server-icon.png');
-
-  if (!fs.existsSync(iconPath)) {
-    return res.status(404).send('No icon');
-  }
-
-  res.sendFile(iconPath);
-});
 
 apiRouter.post('/start', (req, res) => {
   refreshServers();
@@ -249,20 +269,27 @@ app.use('/api', apiRouter);
 // --- Servir frontend ---
 app.use('/', express.static(path.join(__dirname, '..', 'frontend')));
 
-// --- Socket.IO ---
+// Socket.IO
 const httpServer = http.createServer(app);
 const io = new Server(httpServer, {
   cors: { origin: 'http://localhost:5173', methods: ['GET','POST'], credentials: true }
 });
 
-// Integrar sesiones en sockets
-io.use((socket, next) => sessionMiddleware(socket.request, {}, next));
+// Validar JWT en Socket.IO
+io.use((socket, next) => {
+  const token = socket.handshake.auth.token;
+  if (!token) return next(new Error('Token no proporcionado'));
+  
+  jwt.verify(token, JWT_SECRET, (err, decoded) => {
+    if (err) return next(new Error('Token inválido'));
+    socket.userId = decoded.id;
+    socket.username = decoded.username;
+    next();
+  });
+});
 
 io.on('connection', socket => {
-  const reqSession = socket.request.session;
-  if (!reqSession?.userId) return socket.disconnect();
-
-  console.log('Socket conectado', socket.id);
+  console.log('Socket conectado:', socket.id, 'Usuario:', socket.username);
 
   socket.on('join', (serverName) => {
     refreshServers();

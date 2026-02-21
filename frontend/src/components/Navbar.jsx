@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { FaMoon, FaEllipsisV } from "react-icons/fa";
+import { FaMoon, FaSignOutAlt } from "react-icons/fa";
 import { Menu, X } from "lucide-react";
 
 export default function Navbar({ darkMode, toggleDarkMode, onLogout }) {
@@ -25,41 +25,59 @@ export default function Navbar({ darkMode, toggleDarkMode, onLogout }) {
 
  return (
     <div className="relative z-50">
-      {/* Navbar superior compacto */}
+      {/* Navbar superior */}
       <nav
-        className={`fixed top-0 w-full shadow-md z-50 transition-transform duration-300 h-12 flex items-center ${
-          darkMode ? "bg-gray-800 text-white" : "bg-white text-gray-800"
-        }`}
+        className={`fixed top-0 w-full shadow-lg z-50 transition-all duration-300 h-12 md:h-14 flex items-center ${
+          darkMode ? "bg-gradient-to-r from-gray-800 to-gray-900 text-white" : "bg-gradient-to-r from-white to-gray-50 text-gray-800"
+        } border-b border-purple-500/20`}
       >
-        <div className="max-w-7xl mx-auto px-4 flex items-center justify-between w-full">
-          {/* Botón menú hamburguesa */}
-          <button
-            onClick={toggleSidebar}
-            className="p-1 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 transition"
-          >
-            {isOpen ? <X className={`${darkMode ? "text-white" : "text-gray-800"}`} /> : <Menu className={`${darkMode ? "text-white" : "text-gray-800"}`} />}
-          </button>
-
-          {/* Logo */}
+        <div className="max-w-7xl mx-auto px-2 md:px-4 flex items-center justify-between w-full">
           <Link
-            to="/"
-            className="text-lg font-bold text-purple-600 dark:text-purple-400 hover:underline"
-            onClick={closeSidebar}
-          >
-            Panel Minecraft
-          </Link>
+  to="/"
+  className="flex items-center gap-2 text-sm md:text-lg font-bold 
+  bg-gradient-to-r from-purple-400 to-pink-400 
+  bg-clip-text text-transparent hover:opacity-80 transition"
+  onClick={closeSidebar}
+>
+  <img
+    src="frontend/src/assets/icon.png"
+    alt="Logo"
+    className="w-6 h-6 object-contain"
+  />
+  Minecraft Panel
+</Link>
 
-          {/* Acciones (modo oscuro) */}
+          {/* Acciones (modo oscuro + logout) */}
           <div className="flex items-center gap-2">
             <button
               onClick={toggleDarkMode}
               className={`p-1 rounded-full transition-colors duration-300 ${
                 darkMode
                   ? "bg-purple-600 text-white"
-                  : "bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-200"
+                  : "bg-gray-200 text-gray-800"
               }`}
+              title="Cambiar tema"
             >
               <FaMoon />
+            </button>
+
+            <button
+              onClick={onLogout}
+              className="p-1 rounded-full transition-colors duration-300 bg-red-600 hover:bg-red-700 text-white"
+              title="Cerrar sesión"
+            >
+              <FaSignOutAlt />
+            </button>
+
+            <button
+              onClick={toggleSidebar}
+              className={`p-1 rounded-full md:hidden transition-colors duration-300 ${
+                darkMode
+                  ? "bg-purple-600 text-white hover:bg-purple-700"
+                  : "bg-gray-200 text-gray-800 hover:bg-gray-300"
+              }`}
+            >
+              {isOpen ? <X size={20} /> : <Menu size={20} />}
             </button>
           </div>
         </div>
@@ -67,56 +85,43 @@ export default function Navbar({ darkMode, toggleDarkMode, onLogout }) {
 
       {/* Sidebar lateral */}
       <div
-        className={`fixed top-12 left-0 w-64 p-4 transform ${
+        className={`fixed top-12 md:top-14 left-0 w-64 p-4 transform ${
           isOpen ? "translate-x-0" : "-translate-x-full"
-        } transition-transform duration-300 ease-in-out z-40 flex flex-col h-[calc(100%-3rem)] ${
-          darkMode ? "bg-gray-900 text-white" : "bg-white text-gray-900"
+        } transition-transform duration-300 ease-in-out z-40 flex flex-col h-[calc(100%-3rem)] md:h-[calc(100%-3.5rem)] ${
+          darkMode ? "bg-gradient-to-b from-gray-800 to-gray-900 text-white border-r border-purple-500/20" : "bg-gradient-to-b from-gray-50 to-gray-100 text-gray-900 border-r border-purple-500/20"
         }`}
       >
         {/* Contenido arriba */}
         <div>
-          <h2 className="text-lg font-bold mb-4 flex justify-between items-center">
-            Menú
-            <button
-              onClick={closeSidebar}
-              className={`p-1 rounded ${darkMode ? "hover:bg-gray-700" : "hover:bg-gray-200"}`}
-            >
-             
-            </button>
+          <h2 className="text-lg font-bold mb-4 bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+            Menú de navegación
           </h2>
 
-          <nav className="flex flex-col space-y-3">
+          <nav className="flex flex-col space-y-2">
             <Link
               to="/"
-              className={`hover:${darkMode ? "text-purple-400" : "text-purple-600"}`}
+              className={`px-4 py-2 rounded-lg transition ${
+                darkMode
+                  ? "text-gray-300 hover:text-purple-300 hover:bg-purple-500/20"
+                  : "text-gray-600 hover:text-purple-600 hover:bg-purple-200/30"
+              }`}
               onClick={closeSidebar}
             >
-              Home
+              🏠 Inicio
             </Link>
             <Link
               to="/dashboard"
-              className={`hover:${darkMode ? "text-purple-400" : "text-purple-600"}`}
+              className={`px-4 py-2 rounded-lg transition ${
+                darkMode
+                  ? "text-gray-300 hover:text-purple-300 hover:bg-purple-500/20"
+                  : "text-gray-600 hover:text-purple-600 hover:bg-purple-200/30"
+              }`}
               onClick={closeSidebar}
             >
-              Dashboard
+              🎮 Dashboard
             </Link>
           </nav>
         </div>
-
-        {/* Botón fijo abajo */}
-        <button
-          onClick={() => {
-            onLogout();
-            closeSidebar();
-          }}
-          className={`mt-auto w-full text-left px-4 py-2 rounded-lg font-semibold transition ${
-            darkMode
-              ? "bg-red-600 hover:bg-red-700 text-white"
-              : "bg-red-600 hover:bg-red-700 text-white"
-          }`}
-        >
-          Cerrar sesión
-        </button>
       </div>
     </div>
   );

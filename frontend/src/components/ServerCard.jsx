@@ -1,8 +1,10 @@
 import React, { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { io } from "socket.io-client";
 import { Maximize2, Minimize2 } from "lucide-react";
 
-export default function ServerCard({ server, data, onStart, onStop, onOpen }) {
+export default function ServerCard({ server, data, onStart, onStop, darkMode }) {
+  const navigate = useNavigate();
   const [logs, setLogs] = useState("");
   const [command, setCommand] = useState("");
   const [expanded, setExpanded] = useState(false);
@@ -11,7 +13,10 @@ export default function ServerCard({ server, data, onStart, onStop, onOpen }) {
   const socket = useRef(null);
 
   useEffect(() => {
-    socket.current = io("http://localhost:4000", { withCredentials: true });
+    const token = localStorage.getItem('authToken');
+    socket.current = io("http://localhost:4000", {
+      auth: { token }
+    });
 
     socket.current.emit("join", server);
 
@@ -41,27 +46,44 @@ export default function ServerCard({ server, data, onStart, onStop, onOpen }) {
 
   return (
     <div
-      className={`bg-white dark:bg-gray-800 p-5 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 transition-all ${expanded ? "col-span-full" : "hover:shadow-lg"
-        }`
-
-      }
-      onClick={() => onOpen(server)}
+      className={`p-5 rounded-2xl shadow-lg border transition-all cursor-pointer overflow-hidden hover:shadow-2xl ${
+        darkMode
+          ? "bg-gradient-to-br from-gray-800 to-gray-900 border-purple-500/20 hover:border-purple-500/40"
+          : "bg-gradient-to-br from-gray-100 to-gray-200 border-purple-400/50 hover:border-purple-500/70"
+      } ${expanded ? "col-span-full" : ""}`}
+      onClick={() => navigate(`/dashboard/${encodeURIComponent(server)}`)}
     >
+      {/* Status Badge */}
+      <div className="absolute top-4 right-4 z-10">
+        <div
+          className={`px-3 py-1 rounded-full text-xs font-semibold ${
+            data.running
+              ? "bg-green-500/20 text-green-600 border border-green-500/50 dark:text-green-300"
+              : "bg-red-500/20 text-red-600 border border-red-500/50 dark:text-red-300"
+          }`}
+        >
+          {data.running ? "● Activo" : "● Detenido"}
+        </div>
+      </div>
+
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-3">
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+        <div className="flex items-center gap-2 md:gap-3 min-w-0">
           {data.icon ? (
             <img
-              src={`http://localhost:4000/api/server-icon/${server}`}
+              src={`http://localhost:4000/api/server-icon/${encodeURIComponent(server)}`}
               alt={`${server} icon`}
-              className="w-12 h-12 rounded-md object-cover"
+              onError={(e) => console.error('Error cargando icono:', e.target.src)}
+              className="w-12 h-12 md:w-14 md:h-14 rounded-xl object-cover flex-shrink-0 border-2 border-purple-500/30 shadow-lg"
             />
           ) : (
-            <div className="w-12 h-12 rounded-md bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-gray-500">
+            <div className="w-12 h-12 md:w-14 md:h-14 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white flex-shrink-0 text-xl shadow-lg">
               🎮
             </div>
           )}
-          <h3 className="text-xl font-semibold text-purple-600 dark:text-purple-400">
+          <h3 className={`text-base md:text-xl font-bold bg-clip-text text-transparent truncate ${
+            darkMode ? "bg-gradient-to-r from-purple-300 to-pink-300" : "bg-gradient-to-r from-purple-700 to-pink-700"
+          }`}>
             {server}
           </h3>
         </div>
@@ -69,61 +91,71 @@ export default function ServerCard({ server, data, onStart, onStop, onOpen }) {
         <button
           onClick={(e) => {
             e.stopPropagation();
-            setExpanded(!expanded)
+            setExpanded(!expanded);
           }}
-          className="p-2 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700"
+          className={`p-2 rounded-md transition-colors ${
+            darkMode ? "hover:bg-gray-700" : "hover:bg-gray-200"
+          }`}
         >
           {expanded ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
         </button>
       </div>
 
       {/* Información principal (siempre igual) */}
-      <div className="space-y-2">
-        <p className="text-gray-700 dark:text-gray-300">
-          Estado:{" "}
-          <span
-            className={
-              data.running
-                ? "text-green-600 font-semibold"
-                : "text-red-600 font-semibold"
-            }
-          >
-            {data.running ? "Activo" : "Detenido"}
-          </span>{" "}
-          {data.pid && `(PID: ${data.pid})`}
+      <div className="space-y-3 text-sm md:text-base">
+        {/* Ping Status */}
+        <div className="flex items-center gap-2">
+          <div
+            className={`w-3 h-3 rounded-full ${
+              data.ping?.up ? "bg-green-500 animate-pulse" : "bg-red-500"
+            }`}
+          ></div>
+          <span className={darkMode ? "text-gray-300" : "text-gray-700"}>
+            {data.ping?.up ? "Conectado" : "Desconectado"}
+          </span>
+        </div>
+
+        {/* Players Info */}
+        {data.ping?.up && (
+          <div className={`flex items-center justify-between py-2 px-3 rounded-lg border ${
+            darkMode
+              ? "bg-gray-700/30 border-purple-500/20"
+              : "bg-purple-200/30 border-purple-400/50"
+          }`}>
+            <span className={darkMode ? "text-gray-400" : "text-gray-700"}>
+              Jugadores
+            </span>
+            <span className={`font-semibold ${darkMode ? "text-purple-300" : "text-purple-700"}`}>
+              {data.players?.online ?? 0}/{data.players?.max ?? 20}
+            </span>
+          </div>
+        )}
+
+        {/* Version */}
+        <p className={`text-xs ${
+          darkMode ? "text-gray-400" : "text-gray-700"
+        }`}>
+          Versión: <span className={`font-semibold ${darkMode ? "text-purple-300" : "text-purple-700"}`}>{data.version || "N/A"}</span>
         </p>
-
-        <p
-          className={`${data.ping?.up
-              ? "text-green-600 dark:text-green-400"
-              : "text-red-500 dark:text-red-400"
-            } font-medium`}
-        >
-          Ping: {data.ping?.up ? `UP — players: ${data.ping.players}` : "DOWN"}
-        </p>
-
-        <p className="text-gray-700 dark:text-gray-300">
-          Versión: {data.version || "N/A"}
-        </p>
-
-
       </div>
 
       {/* Detalles solo si expandido */}
       {expanded && (
-
         <div className="mt-4 space-y-4">
-          <div className="flex gap-2 mt-3">
+          <div className="flex flex-col sm:flex-row gap-2 mt-3">
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 onStart(server);
               }}
               disabled={data.running}
-              className={`flex-1 py-2 rounded-lg font-medium text-white transition-colors ${data.running
-                  ? "bg-gray-300 dark:bg-gray-600 cursor-not-allowed"
-                  : "bg-purple-600 hover:bg-purple-700 dark:bg-purple-500 dark:hover:bg-purple-600"
-                }`}
+              className={`flex-1 py-2 text-sm md:text-base rounded-lg font-medium text-white transition-colors ${
+                data.running
+                  ? darkMode
+                    ? "bg-gray-600 cursor-not-allowed"
+                    : "bg-gray-300 cursor-not-allowed"
+                  : "bg-purple-600 hover:bg-purple-700"
+              }`}
             >
               Start
             </button>
@@ -134,35 +166,46 @@ export default function ServerCard({ server, data, onStart, onStop, onOpen }) {
                 onStop(server);
               }}
               disabled={!data.running}
-              className={`flex-1 py-2 rounded-lg font-medium text-white transition-colors ${!data.running
-                  ? "bg-gray-300 dark:bg-gray-600 cursor-not-allowed"
-                  : "bg-red-600 hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600"
-                }`}
+              className={`flex-1 py-2 text-sm md:text-base rounded-lg font-medium text-white transition-colors ${
+                !data.running
+                  ? darkMode
+                    ? "bg-gray-600 cursor-not-allowed"
+                    : "bg-gray-300 cursor-not-allowed"
+                  : "bg-red-600 hover:bg-red-700"
+              }`}
             >
               Stop
             </button>
           </div>
           <div>
-            <p className="font-medium mb-2">Logs:</p>
+            <p className="text-sm md:text-base font-medium mb-2">Logs:</p>
             <pre
               ref={preRef}
-              className="bg-gray-100 dark:bg-gray-900 p-2 rounded-md h-40 overflow-y-auto text-xs"
+              className={`p-2 rounded-md h-32 sm:h-40 md:h-48 overflow-y-auto text-xs ${
+                darkMode
+                  ? "bg-gray-900 text-gray-300"
+                  : "bg-gray-50 text-gray-800"
+              }`}
             >
               {logs || "Sin logs aún..."}
             </pre>
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex flex-col sm:flex-row gap-2">
             <input
               type="text"
               value={command}
               onChange={(e) => setCommand(e.target.value)}
               placeholder="Escribe un comando..."
-              className="flex-1 px-3 py-2 rounded-lg border dark:border-gray-700 bg-gray-50 dark:bg-gray-700 dark:text-white"
+              className={`flex-1 px-3 py-2 text-sm rounded-lg border transition-colors ${
+                darkMode
+                  ? "border-gray-700 bg-gray-700 text-white placeholder-gray-400"
+                  : "border-gray-400 bg-white text-gray-900 placeholder-gray-700"
+              }`}
             />
             <button
               onClick={sendCommand}
-              className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg"
+              className="px-3 md:px-4 py-2 text-sm bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition"
             >
               Enviar
             </button>

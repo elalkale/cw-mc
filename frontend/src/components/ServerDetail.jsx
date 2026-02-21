@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { io } from 'socket.io-client';
 
-export default function ServerDetail({ server, data, onStart, onStop, onBack }) {
+export default function ServerDetail({ server, data, onStart, onStop, darkMode }) {
   const [logs, setLogs] = useState('');
   const [logsVisible, setLogsVisible] = useState(true);
   const [command, setCommand] = useState('');
@@ -9,7 +9,10 @@ export default function ServerDetail({ server, data, onStart, onStop, onBack }) 
   const socket = useRef(null);
 
   useEffect(() => {
-    socket.current = io('http://localhost:4000', { withCredentials: true });
+    const token = localStorage.getItem('authToken');
+    socket.current = io('http://localhost:4000', {
+      auth: { token }
+    });
     socket.current.emit('join', server);
 
     socket.current.on('log', ({ server: srv, line }) => {
@@ -37,138 +40,189 @@ export default function ServerDetail({ server, data, onStart, onStop, onBack }) 
     return (
         <div className="flex flex-col space-y-4">
 
-            <button
-                onClick={onBack}
-                className="bg-gray-300 dark:bg-gray-700 text-gray-800 dark:text-gray-200 px-4 py-2 rounded-lg w-fit"
-            >
-                ← Volver
-            </button>
-
       {/* Encabezado */}
-      <div className="flex items-center gap-3">
+      <div className={`rounded-2xl shadow-lg p-4 md:p-6 border flex items-center gap-3 md:gap-4 flex-wrap transition-colors ${
+        darkMode
+          ? "bg-gradient-to-br from-gray-800 to-gray-900 border-purple-500/20"
+          : "bg-gradient-to-br from-gray-100 to-gray-200 border-purple-400/50"
+      }`}>
         {data.icon ? (
           <img
-            src={`http://localhost:4000/api/server-icon/${server}`}
+            src={`http://localhost:4000/api/server-icon/${encodeURIComponent(server)}`}
             alt={`${server} icon`}
-            className="w-12 h-12 rounded-md object-cover"
+            onError={(e) => console.error('Error cargando icono:', e.target.src)}
+            className="w-14 h-14 md:w-16 md:h-16 rounded-xl object-cover border-2 border-purple-500/30 shadow-lg"
           />
         ) : (
-          <div className="w-12 h-12 rounded-md bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-gray-500">
+          <div className="w-14 h-14 md:w-16 md:h-16 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white text-2xl shadow-lg">
             🎮
           </div>
         )}
-        <h2 className="text-2xl font-bold text-purple-600 dark:text-purple-400">
-          {server}
-        </h2>
+        <div>
+          <h2 className={`text-2xl md:text-3xl font-bold bg-clip-text text-transparent ${
+            darkMode ? "bg-gradient-to-r from-purple-300 to-pink-300" : "bg-gradient-to-r from-purple-700 to-pink-700"
+          }`}>
+            {server}
+          </h2>
+          <p className={`text-sm ${
+            darkMode ? "text-gray-400" : "text-gray-700"
+          }`}>Panel de control del servidor</p>
+        </div>
       </div>
 
       {/* Estado */}
-      <p className="text-gray-700 dark:text-gray-300">
-        Running: {data.running ? '✅ Activo' : '❌ Detenido'}{' '}
-        {data.pid ? `(PID: ${data.pid})` : ''}
-      </p>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {/* Status */}
+        <div className={`rounded-xl p-4 border transition-colors ${
+          darkMode
+            ? "bg-gradient-to-br from-gray-800 to-gray-900 border-purple-500/20"
+            : "bg-gradient-to-br from-gray-100 to-gray-200 border-purple-400/50"
+        }`}>
+          <p className={`text-xs font-semibold uppercase mb-2 ${
+            darkMode ? "text-gray-400" : "text-gray-700"
+          }`}>Estado</p>
+          <div className="flex items-center gap-2">
+            <div className={`w-3 h-3 rounded-full ${data.running ? "bg-green-500 animate-pulse" : "bg-red-500"}`}></div>
+            <span className={`font-semibold text-sm md:text-base ${data.running ? darkMode ? "text-green-400" : "text-green-700" : darkMode ? "text-red-400" : "text-red-700"}`}>
+              {data.running ? "Activo" : "Detenido"}
+            </span>
+          </div>
+          {data.pid && <p className={`text-xs mt-1 ${
+            darkMode ? "text-gray-500" : "text-gray-600"
+          }`}>PID: {data.pid}</p>}
+        </div>
 
-      <p
-        className={`${
-          data.ping?.up
-            ? 'text-green-600 dark:text-green-400'
-            : 'text-red-500 dark:text-red-400'
-        } font-medium`}
-      >
-        Ping:{' '}
-        {data.ping?.up
-          ? `UP — jugadores: ${data.players?.online ?? 0}/${data.players?.max ?? 0}`
-          : 'DOWN'}
-      </p>
+        {/* Conexión */}
+        <div className={`rounded-xl p-4 border transition-colors ${
+          darkMode
+            ? "bg-gradient-to-br from-gray-800 to-gray-900 border-purple-500/20"
+            : "bg-gradient-to-br from-gray-100 to-gray-200 border-purple-400/50"
+        }`}>
+          <p className={`text-xs font-semibold uppercase mb-2 ${
+            darkMode ? "text-gray-400" : "text-gray-700"
+          }`}>Conexión</p>
+          <div className="flex items-center gap-2">
+            <div className={`w-3 h-3 rounded-full ${data.ping?.up ? "bg-green-500 animate-pulse" : "bg-red-500"}`}></div>
+            <span className={`font-semibold text-sm md:text-base ${data.ping?.up ? darkMode ? "text-green-400" : "text-green-700" : darkMode ? "text-red-400" : "text-red-700"}`}>
+              {data.ping?.up ? "Activa" : "Caída"}
+            </span>
+          </div>
+        </div>
 
-      <p className="text-gray-700 dark:text-gray-300">
-        Versión: {data.version || 'N/A'}
-      </p>
+        {/* Versión */}
+        <div className={`rounded-xl p-4 border transition-colors ${
+          darkMode
+            ? "bg-gradient-to-br from-gray-800 to-gray-900 border-purple-500/20"
+            : "bg-gradient-to-br from-gray-100 to-gray-200 border-purple-400/50"
+        }`}>
+          <p className={`text-xs font-semibold uppercase mb-2 ${
+            darkMode ? "text-gray-400" : "text-gray-700"
+          }`}>Versión</p>
+          <p className={`font-semibold text-sm md:text-base ${
+            darkMode ? "text-purple-300" : "text-purple-700"
+          }`}>{data.version || "N/A"}</p>
+        </div>
+      </div>
 
       {/* Botones */}
-      <div className="flex gap-2">
+      <div className="flex gap-2 flex-col sm:flex-row">
         <button
           onClick={() => onStart(server)}
           disabled={data.running}
-          className={`flex-1 py-2 rounded-lg font-medium text-white transition-colors ${
+          className={`flex-1 py-3 text-sm md:text-base rounded-lg font-semibold transition-all transform ${
             data.running
-              ? 'bg-gray-300 dark:bg-gray-600 cursor-not-allowed'
-              : 'bg-purple-600 hover:bg-purple-700 dark:bg-purple-500 dark:hover:bg-purple-600'
+              ? darkMode
+                ? "bg-gray-700/30 text-gray-500 cursor-not-allowed border border-gray-700/50"
+                : "bg-gray-300/50 text-gray-500 cursor-not-allowed border border-gray-400/50"
+              : "bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white shadow-lg hover:shadow-green-500/50 hover:scale-105 active:scale-95"
           }`}
         >
-          Start
+          ▶️ Iniciar Servidor
         </button>
 
         <button
           onClick={() => onStop(server)}
           disabled={!data.running}
-          className={`flex-1 py-2 rounded-lg font-medium text-white transition-colors ${
+          className={`flex-1 py-3 text-sm md:text-base rounded-lg font-semibold transition-all transform ${
             !data.running
-              ? 'bg-gray-300 dark:bg-gray-600 cursor-not-allowed'
-              : 'bg-red-600 hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600'
+              ? darkMode
+                ? "bg-gray-700/30 text-gray-500 cursor-not-allowed border border-gray-700/50"
+                : "bg-gray-300/50 text-gray-500 cursor-not-allowed border border-gray-400/50"
+              : "bg-gradient-to-r from-red-600 to-pink-600 hover:from-red-700 hover:to-pink-700 text-white shadow-lg hover:shadow-red-500/50 hover:scale-105 active:scale-95"
           }`}
         >
-          Stop
+          ⏹️ Detener Servidor
         </button>
 
         <button
           onClick={() => setLogsVisible(!logsVisible)}
-          className="flex-1 py-2 rounded-lg border border-purple-600 text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-700/20 transition-colors"
+          className={`flex-1 py-3 text-sm md:text-base rounded-lg font-semibold border-2 transition-all transform hover:scale-105 active:scale-95 ${
+            darkMode
+              ? "border-purple-500/50 text-purple-300 hover:bg-purple-500/10"
+              : "border-purple-400/50 text-purple-600 hover:bg-purple-200/20"
+          }`}
         >
-          {logsVisible ? 'Ocultar Logs' : 'Ver Logs'}
+          {logsVisible ? '📋 Ocultar Logs' : '📋 Ver Logs'}
         </button>
       </div>
-
-      {/* 👇 Jugadores conectados */}
-      <div className="bg-gray-100 dark:bg-gray-900 rounded-lg p-4">
-        <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">
-          Jugadores conectados ({data?.players?.online ?? 0})
-        </h3>
-        <div className="flex flex-col gap-3">
-          {data?.players?.sample?.length > 0 ? (
-            data.players.sample.map((p) => (
-              <div key={p.id} className="flex items-center gap-3">
-                <img
-                  src={`https://crafatar.com/avatars/${p.id}?overlay`}
-                  alt={p.name}
-                  className="w-8 h-8 rounded"
-                />
-                <span className="text-gray-800 dark:text-gray-200">{p.name}</span>
-              </div>
-            ))
-          ) : (
-            <p className="text-gray-500 text-sm">No hay jugadores conectados</p>
-          )}
-        </div>
-      </div>
-
             {/* Logs */}
             {logsVisible && (
-                <pre ref={preRef} className="h-96 overflow-y-scroll bg-gray-200 dark:bg-gray-700 p-3 rounded-md text-sm text-gray-800 dark:text-gray-200">
-                    {logs}
-                </pre>
+                <div className={`rounded-2xl shadow-lg p-3 md:p-4 border transition-colors ${
+                  darkMode
+                    ? "bg-gradient-to-br from-gray-800 to-gray-900 border-purple-500/20"
+                    : "bg-gradient-to-br from-gray-100 to-gray-200 border-purple-400/50"
+                }`}>
+                    <h3 className={`text-sm md:text-base font-bold mb-3 flex items-center gap-2 ${
+                      darkMode ? "text-purple-300" : "text-purple-700"
+                    }`}>
+                        📄 Registros del Servidor
+                    </h3>
+                    <pre ref={preRef} className={`h-48 sm:h-64 md:h-96 overflow-y-scroll p-3 rounded-lg font-mono border ${
+                      darkMode
+                        ? "bg-black/40 text-green-400 border-green-500/20"
+                        : "bg-gray-50 text-green-800 border-green-500/30"
+                    } text-xs md:text-sm`}>
+                        {logs || "Cargando logs..."}
+                    </pre>
+                </div>
             )}
 
       {/* Input de comandos */}
-      <div className="flex gap-2 pt-2 pb-8 px-4">
-        <input
-          value={command}
-          onChange={(e) => setCommand(e.target.value)}
-          placeholder="Comando..."
-          disabled={!data.running}
-          className="flex-1 p-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-purple-400 transition disabled:bg-gray-200 dark:disabled:bg-gray-600"
-        />
-        <button
-          onClick={sendCommand}
-          disabled={!data.running}
-          className={`px-4 py-2 rounded-lg font-medium text-white transition-colors ${
-            !data.running
-              ? 'bg-gray-300 dark:bg-gray-600 cursor-not-allowed'
-              : 'bg-purple-600 hover:bg-purple-700 dark:bg-purple-500 dark:hover:bg-purple-600'
-          }`}
-        >
-          Enviar
-        </button>
+      <div className={`rounded-2xl shadow-lg p-3 md:p-4 border transition-colors ${
+        darkMode
+          ? "bg-gradient-to-br from-gray-800 to-gray-900 border-purple-500/20"
+          : "bg-gradient-to-br from-gray-100 to-gray-200 border-purple-400/50"
+      }`}>
+        <h3 className={`text-sm md:text-base font-bold mb-3 ${
+          darkMode ? "text-purple-300" : "text-purple-700"
+        }`}>⌨️ Consola de comandos</h3>
+        <div className="flex flex-col sm:flex-row gap-2">
+          <input
+            value={command}
+            onChange={(e) => setCommand(e.target.value)}
+            onKeyPress={(e) => e.key === 'Enter' && sendCommand()}
+            placeholder="Escribe un comando..."
+            disabled={!data.running}
+            className={`flex-1 p-3 text-sm rounded-lg focus:outline-none transition border-2 font-mono ${
+              darkMode
+                ? "bg-black/40 border-purple-500/30 focus:border-purple-500 text-green-400 placeholder-green-700/50"
+                : "bg-gray-50 border-purple-500/40 focus:border-purple-600 text-green-800 placeholder-green-700"
+            }`}
+          />
+          <button
+            onClick={sendCommand}
+            disabled={!data.running}
+            className={`px-4 md:px-6 py-3 text-sm font-semibold rounded-lg transition-all transform ${
+              !data.running
+                ? darkMode
+                  ? "bg-gray-700/30 text-gray-500 cursor-not-allowed border border-gray-700/50"
+                  : "bg-gray-300/50 text-gray-500 cursor-not-allowed border border-gray-400/50"
+                : "bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white shadow-lg hover:shadow-purple-500/50 hover:scale-105 active:scale-95"
+            }`}
+          >
+            Enviar
+          </button>
+        </div>
       </div>
     </div>
   );
