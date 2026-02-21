@@ -74,16 +74,16 @@ export default function LoginForm({ onLogin, darkMode }) {
     return (
       <div
         className={`flex items-center justify-center min-h-screen ${darkMode
-            ? 'bg-gradient-to-br from-purple-900 via-gray-900 to-black'
-            : 'bg-gradient-to-br from-purple-100 via-white to-purple-50'
+          ? 'bg-gradient-to-br from-purple-900 via-gray-900 to-black'
+          : 'bg-gradient-to-br from-purple-100 via-white to-purple-50'
           }`}
       >
         {/* role="status" + aria-label para lectores de pantalla (WCAG 4.1.3) */}
         <div className="text-center" role="status" aria-label="Verificando sesión, por favor espere">
           <div
             className={`w-12 h-12 border-4 rounded-full animate-spin mx-auto mb-4 ${darkMode
-                ? 'border-purple-500 border-t-transparent'
-                : 'border-purple-400 border-t-transparent'
+              ? 'border-purple-500 border-t-transparent'
+              : 'border-purple-400 border-t-transparent'
               }`}
             aria-hidden="true"
           />
@@ -101,8 +101,8 @@ export default function LoginForm({ onLogin, darkMode }) {
   return (
     <div
       className={`flex items-center justify-center min-h-screen relative overflow-hidden ${darkMode
-          ? 'bg-gradient-to-br from-purple-900 via-gray-900 to-black'
-          : 'bg-gradient-to-br from-purple-50 via-white to-purple-100'
+        ? 'bg-gradient-to-br from-purple-900 via-gray-900 to-black'
+        : 'bg-gradient-to-br from-purple-50 via-white to-purple-100'
         }`}
     >
       {/* Decorativos – aria-hidden para no contaminar lectores */}
@@ -120,17 +120,16 @@ export default function LoginForm({ onLogin, darkMode }) {
 
       <div
         className={`relative backdrop-blur-xl p-8 rounded-3xl shadow-2xl w-full max-w-sm border transition-colors ${darkMode
-            ? 'bg-gray-800/40 border-purple-500/20'
-            : 'bg-white/40 border-purple-300/30'
+          ? 'bg-gray-800/40 border-purple-500/20'
+          : 'bg-white/40 border-purple-300/30'
           }`}
       >
         <div className="text-center mb-8">
-          <div
-            className="inline-block p-3 bg-gradient-to-br from-purple-500 to-pink-500 rounded-2xl mb-4"
-            aria-hidden="true"
-          >
-            <span className="text-2xl" aria-hidden="true">🎮</span>
-          </div>
+          <img
+            src="/frontend/src/assets/logo.png"
+            alt="Logo del Panel Minecraft"
+            className="w-20 h-20 mx-auto mb-4 drop-shadow-lg"
+          />
           <h1 className="text-4xl font-extrabold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
             Minecraft Panel
           </h1>
@@ -157,8 +156,8 @@ export default function LoginForm({ onLogin, darkMode }) {
               /* autocomplete ayuda a gestores de contraseñas y autofill (WCAG 1.3.5) */
               autoComplete="username"
               className={`w-full p-3 rounded-lg transition border ${darkMode
-                  ? 'bg-gray-700/50 border-purple-500/30 text-white placeholder-gray-400'
-                  : 'bg-white/70 border-purple-300/50 text-gray-900 placeholder-gray-500'
+                ? 'bg-gray-700/50 border-purple-500/30 text-white placeholder-gray-400'
+                : 'bg-white/70 border-purple-300/50 text-gray-900 placeholder-gray-500'
                 }`}
               placeholder="Ingresa tu usuario"
               value={username}
@@ -188,8 +187,8 @@ export default function LoginForm({ onLogin, darkMode }) {
               type="password"
               autoComplete="current-password"
               className={`w-full p-3 rounded-lg transition border ${darkMode
-                  ? 'bg-gray-700/50 border-purple-500/30 text-white placeholder-gray-400'
-                  : 'bg-white/70 border-purple-300/50 text-gray-900 placeholder-gray-500'
+                ? 'bg-gray-700/50 border-purple-500/30 text-white placeholder-gray-400'
+                : 'bg-white/70 border-purple-300/50 text-gray-900 placeholder-gray-500'
                 }`}
               placeholder="Ingresa tu contraseña"
               value={password}
@@ -221,8 +220,8 @@ export default function LoginForm({ onLogin, darkMode }) {
             role="alert"
             aria-live="assertive"
             className={`mt-4 p-3 rounded-lg text-sm text-center border ${darkMode
-                ? 'bg-red-500/20 border-red-500/50 text-red-300'
-                : 'bg-red-100 border-red-300 text-red-700'
+              ? 'bg-red-500/20 border-red-500/50 text-red-300'
+              : 'bg-red-100 border-red-300 text-red-700'
               }`}
           >
             {error}
