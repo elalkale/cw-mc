@@ -2,11 +2,39 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Puedes agregar CSS adicional si quieres */
+/* Reserva siempre el espacio de la scrollbar para evitar layout shift
+   al navegar entre páginas con/sin scroll (afecta al navbar fixed) */
 html {
   scrollbar-gutter: stable;
 }
 
-body {
-  @apply bg-gray-100;
+/* ── Focus-visible global ─────────────────────────────────────────── */
+/* Garantiza que todos los elementos interactivos muestren un indicador
+   de foco visible al navegar con teclado (WCAG 2.4.7 – Nivel AA) */
+*:focus-visible {
+  outline: 2px solid #a855f7;
+  /* purple-500 */
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+/* Quita el outline por defecto del click en elementos que ya
+   tienen estilos propios, pero lo mantiene para teclado */
+*:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* ── Reducción de movimiento ─────────────────────────────────────── */
+/* Respeta la preferencia del sistema operativo del usuario
+   (WCAG 2.3.3 – Nivel AA / 2.3.1 nivel A) */
+@media (prefers-reduced-motion: reduce) {
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

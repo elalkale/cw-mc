@@ -23,6 +23,34 @@
   animation-delay: 4s;
 }
 
+/* Accesibilidad: Skip to main content */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+.sr-only:focus {
+  position: fixed;
+  top: 10px;
+  left: 10px;
+  width: auto;
+  height: auto;
+  padding: 10px;
+  margin: 0;
+  overflow: visible;
+  clip: auto;
+  background-color: #000;
+  color: #fff;
+  z-index: 99999;
+}
+
 /* Scroll bar personalizado */
 pre::-webkit-scrollbar {
   width: 8px;
@@ -49,16 +77,47 @@ body {
 
 /* Transiciones suaves */
 * {
-  @apply transition-colors duration-200;
+  transition: colors 200ms ease-in-out;
 }
 
-/* Focus styles */
+/* Focus styles - Accesibilidad */
+:focus-visible {
+  outline: 3px solid #a855f7;
+  outline-offset: 2px;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 3px solid #a855f7;
+  outline-offset: 2px;
+}
+
+/* Fallback para navegadores sin focus-visible */
 input:focus,
-button:focus {
-  outline: none;
+button:focus,
+a:focus,
+textarea:focus,
+select:focus {
+  outline: 2px solid #a855f7;
+  outline-offset: 2px;
 }
 
 /* Placeholder styling */
 input::placeholder {
-  @apply text-opacity-50;
+  opacity: 0.5;
 }
+
+/* Reducir animaciones para usuarios con preferencia */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
