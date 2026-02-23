@@ -1,10 +1,12 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { FaMoon, FaSignOutAlt } from "react-icons/fa";
-import { Menu, X, Home, LayoutDashboard } from "lucide-react";
+import { Menu, X, Home, LayoutDashboard, Settings as SettingsIcon } from "lucide-react";
+import Settings from "./Settings.jsx";
 
 export default function Navbar({ darkMode, toggleDarkMode, onLogout, logoutBtnRef }) {
   const [isOpen, setIsOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const location = useLocation();
 
   // Cerrar sidebar con Escape (WCAG 2.1.2 – No Keyboard Trap)
@@ -95,6 +97,31 @@ export default function Navbar({ darkMode, toggleDarkMode, onLogout, logoutBtnRe
             >
               <FaSignOutAlt aria-hidden="true" />
             </button>
+
+            {/* Botón de configuración */}
+            <button
+              onClick={() => setIsSettingsOpen(true)}
+              className="p-1.5 rounded-full transition-colors duration-300 bg-blue-600 hover:bg-blue-700 text-white"
+              aria-label="Abrir configuración"
+            >
+              <SettingsIcon size={20} aria-hidden="true" />
+            </button>
+
+            {/* Modal de configuración */}
+            {isSettingsOpen && (
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+                <div className="bg-gradient-to-br from-gray-800 to-gray-900 text-white rounded-2xl shadow-lg p-6 w-full max-w-md relative border border-purple-500/20">
+                  <button
+                    className="absolute top-2 right-2 p-2 rounded-full bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600"
+                    aria-label="Cerrar configuración"
+                    onClick={() => setIsSettingsOpen(false)}
+                  >
+                    <X size={20} aria-hidden="true" />
+                  </button>
+                  <Settings darkMode={darkMode}/>
+                </div>
+              </div>
+            )}
 
             {/* Hamburger — solo visible en MÓVIL */}
             <button

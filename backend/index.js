@@ -9,6 +9,9 @@ import path from 'path';
 import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
 import { status as mcStatus } from 'minecraft-server-util';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 // --- __dirname en ESM ---
 const __filename = fileURLToPath(import.meta.url);
@@ -26,7 +29,7 @@ const corsOptions = {
 app.use(cors(corsOptions));
 
 // --- JWT Secret ---
-const JWT_SECRET = 'tu-clave-secreta-super-segura-cambiar-en-produccion';
+const JWT_SECRET = process.env.JWT_SECRET || 'supersecretkey';
 
 // --- Token verification middleware ---
 function verifyToken(req, res, next) {
@@ -44,7 +47,7 @@ function verifyToken(req, res, next) {
 
 // --- Usuarios de ejemplo ---
 const users = [
-  { id: 1, username: 'admin', password: '1234' }
+  { id: 1, username: process.env.ADMIN_USER || 'admin', password: process.env.ADMIN_PASS || 'password' }
 ];
 
 // --- Login / Logout ---
@@ -89,8 +92,43 @@ app.get('/api/server-icon/:name', (req, res) => {
   res.sendFile(iconPath);
 });
 
+// --- Endpoint settings para cambiar configuraciones del servidor (por el momento solo ruta de servidores) ---
+app.post('/api/settings', verifyToken, (req, res) => {
+  const { serverRoot } = req.body;
+  if (serverRoot) {
+    const resolvedPath = path.resolve(serverRoot);
+    if (fs.existsSync(resolvedPath) && fs.statSync(resolvedPath).isDirectory()) {
+      process.env.SERVER_ROOT = resolvedPath;
+      refreshServers(); // Refrescar servidores con la nueva ruta
+      return res.json({ ok: true, message: 'Ruta de servidores actualizada' });
+    } else {
+      return res.status(400).json({ error: 'La ruta proporcionada no es un directorio válido' });
+    }
+  }
+  res.status(400).json({ error: 'No se proporcionaron configuraciones válidas para actualizar' });
+});
+
+const configPath = path.join(__dirname, 'config.json');
+
+function loadConfig() {
+  if (!fs.existsSync(configPath)) {
+    const defaultConfig = { serverRoot: path.join(__dirname, '../','servers') };
+    fs.writeFileSync(configPath, JSON.stringify(defaultConfig, null, 2));
+    return defaultConfig;
+  }
+  const raw = fs.readFileSync(configPath, 'utf-8');
+  return JSON.parse(raw);
+}
+
+app.get('/api/settings', verifyToken, (req, res) => {
+  const config = loadConfig();
+  res.json({ serverRoot: config.serverRoot });
+});
+
+
 // --- Detectar servidores automáticamente ---
-const SERVER_ROOT = path.resolve(__dirname, '..', 'servers');
+const config = loadConfig();
+const SERVER_ROOT = path.resolve(config.serverRoot) || path.join(__dirname, 'servers');
 const servers = {};
 
 // --- Detectar versión del servidor --- //
