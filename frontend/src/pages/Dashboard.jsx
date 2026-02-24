@@ -6,7 +6,6 @@ export default function Dashboard({
   servers,
   startServer,
   stopServer,
-  sendCommand,
   darkMode,
 }) {
   const [viewMode, setViewMode] = useState("grid");

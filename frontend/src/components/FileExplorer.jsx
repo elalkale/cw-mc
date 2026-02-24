@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { replace } from 'react-router-dom';
 
 const FileExplorer = ({ serverName }) => {
     // Vamos a guardar la lista de archivos aquí
@@ -58,28 +59,42 @@ const FileExplorer = ({ serverName }) => {
         setLoadingFile(true);
         setError(null);
         setSelectedFile(fileName);
-        setFileContent(''); // Limpiamos contenido anterior
+        setFileContent(null); // Limpiamos contenido anterior
 
         try {
             const token = localStorage.getItem('authToken');
-            const response = await fetch(`http://localhost:4000/api/files/${serverName}/content?path=${encodeURIComponent(filePath)}`, {
-                headers: {
-                    'Authorization': `Bearer ${token}`
+            const response = await fetch(
+                `http://localhost:4000/api/files/${serverName}/content?path=${encodeURIComponent(filePath)}`,
+                {
+                    headers: {
+                        Authorization: `Bearer ${token}`
+                    }
                 }
-            });
+            );
 
-            const data = await response.json();
-            if (!response.ok) throw new Error(data.error || 'Error al leer el archivo');
+            if (!response.ok) {
+                // Si el backend respondió error, lo leemos como texto para mostrarlo
+                const errorText = await response.text();
+                throw new Error(errorText || 'Error al leer el archivo');
+            }
 
-            setFileContent(data.content);
+            if (fileName.match(/\.(png|jpg|jpeg|gif)$/i)) {
+                // 👈 Leer como blob para imágenes
+                const blob = await response.blob();
+                const imageUrl = URL.createObjectURL(blob);
+                setFileContent(imageUrl);
+            } else {
+                // 👈 Leer como JSON para texto
+                const data = await response.json();
+                setFileContent(data.content);
+            }
         } catch (err) {
             setError(err.message);
-            setSelectedFile(null); // Si hay error, cerramos el visor
+            setSelectedFile(null);
         } finally {
             setLoadingFile(false);
         }
     };
-
     // Estado para guardar
     const [savingFile, setSavingFile] = useState(false);
 
@@ -87,25 +102,51 @@ const FileExplorer = ({ serverName }) => {
     const saveFile = async () => {
         if (!selectedFile) return;
 
-        const filePath = currentPath === '/' ? `/${selectedFile}` : `${currentPath}/${selectedFile}`;
         setSavingFile(true);
         setError(null);
 
         try {
             const token = localStorage.getItem('authToken');
-            const response = await fetch(`http://localhost:4000/api/files/${serverName}/content?path=${encodeURIComponent(filePath)}`, {
-                method: 'PUT',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ content: fileContent })
-            });
+            let body;
+
+            if (selectedFile.match(/\.(png|jpg|jpeg|gif)$/i)) {
+                // Imagen: convertir a base64 si no lo es ya
+                // fileContent podría ser un DataURL o un blob URL
+                if (fileContent.startsWith('blob:')) {
+                    // Tenemos un blob URL: necesitamos convertirlo a base64
+                    const res = await fetch(fileContent);
+                    const blob = await res.blob();
+                    const reader = new FileReader();
+                    body = await new Promise((resolve) => {
+                        reader.onloadend = () => resolve({ content: reader.result, isBase64: true });
+                        reader.readAsDataURL(blob);
+                    });
+                } else {
+                    // Ya es DataURL base64
+                    body = { content: fileContent, isBase64: true };
+                }
+            } else {
+                // Texto plano
+                body = { content: fileContent };
+            }
+
+            const filePath = currentPath === '/' ? `${selectedFile}` : `${currentPath}/${selectedFile}`;
+            const response = await fetch(
+                `http://localhost:4000/api/files/${serverName}/content?path=${encodeURIComponent(filePath)}`,
+                {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(body)
+                }
+            );
 
             const data = await response.json();
             if (!response.ok) throw new Error(data.error || 'Error al guardar el archivo');
 
-            // Podríamos mostrar una notificación de éxito aquí
+            // Aquí podrías mostrar notificación de éxito
             // alert('Archivo guardado correctamente');
         } catch (err) {
             setError(err.message);
@@ -114,8 +155,89 @@ const FileExplorer = ({ serverName }) => {
         }
     };
 
+    //Estado para reemplazar
+
+    const saveFileWithContent = async (content, fileNameOverride) => {
+        if (!fileNameOverride) return;
+
+        setSavingFile(true);
+        setError(null);
+
+        try {
+            const token = localStorage.getItem('authToken');
+            let body;
+
+            if (fileNameOverride.match(/\.(png|jpg|jpeg|gif)$/i)) {
+                body = { content, isBase64: true };
+            } else {
+                body = { content };
+            }
+
+            const filePath = currentPath === '/' ? fileNameOverride : `${currentPath}/${fileNameOverride}`;
+
+            const response = await fetch(
+                `http://localhost:4000/api/files/${serverName}/content?path=${encodeURIComponent(filePath)}`,
+                {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(body)
+                }
+            );
+
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || 'Error al guardar el archivo');
+
+            // Éxito
+            // alert('Archivo reemplazado correctamente');
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            setSavingFile(false);
+        }
+    };
+
+    const handleReplaceFile = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        // Confirmación antes de reemplazar
+        const confirmReplace = window.confirm(
+            `¿Estás seguro de que quieres reemplazar "${selectedFile}" con "${file.name}"?`
+        );
+        if (!confirmReplace) {
+            e.target.value = null; // Limpiar input
+            return;
+        }
+
+        const reader = new FileReader();
+
+        reader.onloadend = async () => {
+            const fileDataUrl = reader.result; // data:image/png;base64,... o texto
+            setFileContent(fileDataUrl);
+
+            // Usamos el nombre original para mantenerlo igual
+            await saveFileWithContent(fileDataUrl, selectedFile);
+        };
+
+        // Leer como DataURL para imágenes, como texto para otros
+        if (file.type.startsWith('image/')) {
+            reader.readAsDataURL(file);
+        } else {
+            reader.readAsText(file);
+        }
+
+        e.target.value = null;
+    };
+
+
     // Estado para borrar
     const [deleting, setDeleting] = useState(false);
+
+    // Estado para descargar
+    const [downloading, setDownloading] = useState(false);
 
     // === FUNCIÓN PARA BORRAR UN ARCHIVO/CARPETA ===
     const deleteItem = async (itemName, e) => {
@@ -230,6 +352,41 @@ const FileExplorer = ({ serverName }) => {
         }
     };
 
+    const handleDownload = async (fileName, e) => {
+        if (e) e.stopPropagation();
+        setDownloading(true);
+        setError(null);
+        try {
+            const token = localStorage.getItem('authToken');
+            const filePath = currentPath === '/' ? `/${fileName}` : `${currentPath}/${fileName}`;
+            const response = await fetch(`http://localhost:4000/api/files/${serverName}/download?path=${encodeURIComponent(filePath)}`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.error || 'Error al descargar archivo');
+            }
+
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = fileName;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(url);
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            setDownloading(false);
+        }
+    };
+
     // useEffect es un "gancho" de React que dice: 
     // "Ejecuta esta función (fetchFiles) nada más crear este componente"
     useEffect(() => {
@@ -330,7 +487,8 @@ const FileExplorer = ({ serverName }) => {
                                         : item.name.endsWith('.txt') ? '📄'
                                             : item.name.endsWith('.json') ? '📝'
                                                 : item.name.endsWith('.zip') || item.name.endsWith('.rar') || item.name.endsWith('.7z') || item.name.endsWith('.gz') ? '🗜️'
-                                                    : '📄'}
+                                                    : item.name.endsWith('.png') || item.name.endsWith('.jpg') || item.name.endsWith('.jpeg') || item.name.endsWith('.gif') ? '🖼️'
+                                                        : '📄'}
                                 </span>
                                 <span className="truncate">{item.name}</span>
                             </div>
@@ -344,6 +502,18 @@ const FileExplorer = ({ serverName }) => {
                             >
                                 🗑️
                             </button>
+
+                            {/* Botón de descarga */}
+                            {!item.isDirectory && (
+                                <button
+                                    onClick={(e) => handleDownload(item.name, e)}
+                                    disabled={downloading}
+                                    title={`Descargar ${item.name}`}
+                                    className="text-gray-500 hover:text-green-500 hover:bg-green-500/10 p-1.5 rounded transition shrink-0"
+                                >
+                                    ⬇️
+                                </button>
+                            )}
                         </div>
                     ))
                 )}
@@ -358,16 +528,32 @@ const FileExplorer = ({ serverName }) => {
                             <h4 className="text-lg font-bold text-white truncate break-all">
                                 {selectedFile.endsWith('.txt') ? '📄'
                                     : selectedFile.endsWith('.json') ? '📝'
-                                        : '📄'} {selectedFile}
+                                        : selectedFile.endsWith('.png') || selectedFile.endsWith('.jpg') || selectedFile.endsWith('.jpeg') || selectedFile.endsWith('.gif') ? '🖼️'
+                                            : '📄'} {selectedFile}
                             </h4>
                             <div className="flex gap-2">
+                                {/* boton de remplazar*/}
                                 <button
-                                    onClick={saveFile}
-                                    disabled={savingFile || loadingFile}
-                                    className="bg-purple-600 hover:bg-purple-500 text-white px-3 py-1 rounded text-sm transition font-bold disabled:opacity-50"
+                                    onClick={() => document.getElementById('replaceFileInput').click()}
+                                    className="bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600"
                                 >
-                                    {savingFile ? '⏳ Guardando...' : '💾 Guardar'}
+                                    Reemplazar archivo
                                 </button>
+                                <input
+                                    type="file"
+                                    id="replaceFileInput"
+                                    style={{ display: 'none' }}
+                                    onChange={handleReplaceFile}
+                                />
+                                {!selectedFile.endsWith('.png') && !selectedFile.endsWith('.jpg') && !selectedFile.endsWith('.jpeg') && !selectedFile.endsWith('.gif') && (
+                                    <button
+                                        onClick={saveFile}
+                                        disabled={savingFile || loadingFile}
+                                        className="bg-purple-600 hover:bg-purple-500 text-white px-3 py-1 rounded text-sm transition font-bold disabled:opacity-50"
+                                    >
+                                        {savingFile ? '⏳ Guardando...' : '💾 Guardar'}
+                                    </button>
+                                )}
                                 <button
                                     onClick={() => setSelectedFile(null)}
                                     className="bg-gray-700 hover:bg-gray-600 text-white px-3 py-1 rounded text-sm transition"
@@ -377,17 +563,27 @@ const FileExplorer = ({ serverName }) => {
                             </div>
                         </div>
 
-                        {/* Contenido del archivo */}
                         <div className="p-4 flex-1 flex flex-col min-h-[50vh]">
-                            {loadingFile ? (
-                                <div className="text-gray-400 text-center py-10 flex-1 flex items-center justify-center">Cargando archivo...</div>
+
+                            {/* Contenido del archivo */}
+                            {selectedFile.endsWith('.png') || selectedFile.endsWith('.jpg') || selectedFile.endsWith('.jpeg') || selectedFile.endsWith('.gif') ? (
+
+                                <div className="r">
+                                    <img className="max-w-full max-h-[50vh] object-contain mx-auto my-4" src={fileContent} alt={selectedFile} />
+                                </div>
                             ) : (
-                                <textarea
-                                    className="flex-1 w-full bg-gray-950 text-gray-300 p-4 rounded text-xs sm:text-sm font-mono custom-scrollbar border border-gray-700 focus:border-purple-500 focus:outline-none resize-none"
-                                    value={fileContent}
-                                    onChange={(e) => setFileContent(e.target.value)}
-                                    spellCheck="false"
-                                />
+                                <div className="p-4 flex-1 flex flex-col min-h-[50vh]">
+                                    {loadingFile ? (
+                                        <div className="text-gray-400 text-center py-10 flex-1 flex items-center justify-center">Cargando archivo...</div>
+                                    ) : (
+                                        <textarea
+                                            className="flex-1 w-full bg-gray-950 text-gray-300 p-4 rounded text-xs sm:text-sm font-mono custom-scrollbar border border-gray-700 focus:border-purple-500 focus:outline-none resize-none"
+                                            value={fileContent}
+                                            onChange={(e) => setFileContent(e.target.value)}
+                                            spellCheck="false"
+                                        />
+                                    )}
+                                </div>
                             )}
                         </div>
                     </div>

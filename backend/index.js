@@ -19,7 +19,7 @@ const __dirname = path.dirname(__filename);
 
 // --- Express ---
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
 
 // --- CORS ---
 const corsOptions = {
@@ -112,7 +112,7 @@ const configPath = path.join(__dirname, 'config.json');
 
 function loadConfig() {
   if (!fs.existsSync(configPath)) {
-    const defaultConfig = { serverRoot: path.join(__dirname, '../','servers') };
+    const defaultConfig = { serverRoot: path.join(__dirname, '../', 'servers') };
     fs.writeFileSync(configPath, JSON.stringify(defaultConfig, null, 2));
     return defaultConfig;
   }
@@ -318,26 +318,29 @@ apiRouter.get('/files/:name/content', async (req, res) => {
 
   const targetPath = path.join(state.cfg.dir, relativePath);
 
-  // Verificamos protección Anti-Path Traversal
   if (!targetPath.startsWith(state.cfg.dir)) {
     return res.status(403).json({ error: 'Acceso denegado a esta ruta' });
   }
 
   try {
-    // Para asegurarnos de que no crasheamos si envían leer una carpeta como archivo
     const stats = await fs.promises.stat(targetPath);
     if (stats.isDirectory()) {
       return res.status(400).json({ error: 'Esta ruta es una carpeta, no un archivo' });
     }
 
-    // Leemos el archivo en formato texto (utf8)
-    const content = await fs.promises.readFile(targetPath, 'utf8');
-    res.json({ ok: true, content });
+    // Detectar extensión de archivo
+    const ext = path.extname(targetPath).toLowerCase();
+    if (['.png', '.jpg', '.jpeg', '.gif'].includes(ext)) {
+      // Para imágenes: enviamos como binario
+      res.sendFile(targetPath);
+    } else {
+      // Para texto: enviamos como JSON
+      const content = await fs.promises.readFile(targetPath, 'utf8');
+      res.json({ ok: true, content });
+    }
   } catch (error) {
     console.error('Error leyendo archivo:', error);
-    if (error.code === 'ENOENT') {
-      return res.status(404).json({ error: 'El archivo no existe' });
-    }
+    if (error.code === 'ENOENT') return res.status(404).json({ error: 'El archivo no existe' });
     res.status(500).json({ error: 'Error interno al leer el archivo' });
   }
 });
@@ -346,42 +349,37 @@ apiRouter.put('/files/:name/content', async (req, res) => {
   refreshServers();
   const { name } = req.params;
   const state = servers[name];
-
-  if (!state) {
-    return res.status(404).json({ error: 'Servidor no encontrado' });
-  }
+  if (!state) return res.status(404).json({ error: 'Servidor no encontrado' });
 
   const relativePath = req.query.path;
-  const { content } = req.body;
+  const { content, isBase64 } = req.body; // agregamos flag para binario
 
-  if (!relativePath) {
-    return res.status(400).json({ error: 'Falta proveer el parámetro path' });
-  }
-  if (content === undefined) {
-    return res.status(400).json({ error: 'Falta proveer el contenido a guardar' });
-  }
+  if (!relativePath) return res.status(400).json({ error: 'Falta proveer path' });
+  if (content === undefined) return res.status(400).json({ error: 'Falta proveer contenido' });
 
   const targetPath = path.join(state.cfg.dir, relativePath);
-
-  // Verificamos protección Anti-Path Traversal
-  if (!targetPath.startsWith(state.cfg.dir)) {
-    return res.status(403).json({ error: 'Acceso denegado a esta ruta' });
-  }
+  if (!targetPath.startsWith(state.cfg.dir)) return res.status(403).json({ error: 'Acceso denegado' });
 
   try {
-    // Verificamos que no sea una carpeta
+    // Evitar sobrescribir carpetas
     if (fs.existsSync(targetPath)) {
       const stats = await fs.promises.stat(targetPath);
-      if (stats.isDirectory()) {
-        return res.status(400).json({ error: 'No se puede sobrescribir una carpeta con texto' });
-      }
+      if (stats.isDirectory()) return res.status(400).json({ error: 'No se puede sobrescribir una carpeta' });
     }
 
-    // Guardamos el nuevo contenido (sobrescribiendo)
-    await fs.promises.writeFile(targetPath, content, 'utf8');
+    if (isBase64) {
+      // contenido binario
+      const base64 = content.split(',')[1] || content; // soporta data:image/png;base64,...
+      const buffer = Buffer.from(base64, 'base64');
+      await fs.promises.writeFile(targetPath, buffer);
+    } else {
+      // contenido texto
+      await fs.promises.writeFile(targetPath, content, 'utf8');
+    }
+
     res.json({ ok: true });
-  } catch (error) {
-    console.error('Error guardando archivo:', error);
+  } catch (err) {
+    console.error('Error guardando archivo:', err);
     res.status(500).json({ error: 'Error interno al guardar el archivo' });
   }
 });
@@ -437,6 +435,9 @@ apiRouter.post('/backup/:name/local', async (req, res) => {
   const { name } = req.params;
   const state = servers[name];
 
+  //se hará backup del world del servidor
+  const worldPath = path.join(state.cfg.dir, 'world');
+
   if (!state) {
     return res.status(404).json({ error: 'Servidor no encontrado' });
   }
@@ -450,10 +451,9 @@ apiRouter.post('/backup/:name/local', async (req, res) => {
     // Generar el nombre con la fecha
     const now = new Date();
     const dateStr = now.toISOString()
-      .replace(/T/, '_')
       .replace(/\..+/, '')
       .replace(/:/g, '-');
-    const filename = `${name}_backup_${dateStr}.zip`;
+    const filename = `world_backup_${dateStr}.zip`;
     const outputPath = path.join(backupDir, filename);
 
     // Creamos un stream de escritura al archivo destino
@@ -471,7 +471,7 @@ apiRouter.post('/backup/:name/local', async (req, res) => {
     archive.pipe(output);
     // Ignore the backups folder itself to avoid recursion or huge files
     archive.glob('**/*', {
-      cwd: state.cfg.dir,
+      cwd: worldPath,
       ignore: ['backups/**']
     });
 
@@ -623,6 +623,33 @@ apiRouter.post('/files/:name/upload', upload.single('file'), async (req, res) =>
     console.error('Error guardando archivo subido:', error);
     await fs.promises.unlink(req.file.path).catch(() => { }); // Limpiar temp si falla
     res.status(500).json({ error: 'Error interno al procesar el archivo subido' });
+  }
+});
+
+apiRouter.get('/files/:name/download', async (req, res) => {
+  refreshServers();
+  const { name } = req.params;
+  const state = servers[name];
+
+  if (!state) return res.status(404).json({ error: 'Servidor no encontrado' });
+
+  const relativePath = req.query.path || '/';
+  const targetPath = path.join(state.cfg.dir, relativePath);
+
+  if (!targetPath.startsWith(state.cfg.dir)) {
+    return res.status(403).json({ error: 'Acceso denegado a esta ruta' });
+  }
+
+  try {
+    const stats = await fs.promises.stat(targetPath);
+    if (stats.isDirectory()) {
+      return res.status(400).json({ error: 'La ruta especificada no es un archivo' });
+    }
+
+    res.download(targetPath, path.basename(targetPath));
+  } catch (error) {
+    console.error('Error descargando archivo:', error);
+    res.status(500).json({ error: 'Error interno al descargar el archivo' });
   }
 });
 
