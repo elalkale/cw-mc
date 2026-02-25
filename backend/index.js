@@ -134,12 +134,27 @@ function refreshServers() {
   if (!fs.existsSync(SERVER_ROOT)) {
     fs.mkdirSync(SERVER_ROOT, { recursive: true });
     console.log(`Directorio de servidores creado: ${SERVER_ROOT}`);
+    return;
   }
 
-  const folders = fs.readdirSync(SERVER_ROOT, { withFileTypes: true })
-    .filter(d => d.isDirectory())
-    .map(d => d.name);
+  const folders = new Set(
+    fs.readdirSync(SERVER_ROOT, { withFileTypes: true })
+      .filter(d => d.isDirectory())
+      .map(d => d.name)
+  );
 
+  // Eliminar servidores cuya carpeta ya no existe (y no están corriendo)
+  for (const name of Object.keys(servers)) {
+    if (!folders.has(name)) {
+      const state = servers[name];
+      if (!state.process || state.process.killed) {
+        delete servers[name];
+        console.log(`Servidor eliminado de la lista: ${name}`);
+      }
+    }
+  }
+
+  // Añadir nuevos servidores detectados
   for (const folder of folders) {
     if (!servers[folder]) {
       const dir = path.join(SERVER_ROOT, folder);
@@ -793,6 +808,110 @@ apiRouter.get('/install/:installId', (req, res) => {
   res.json(entry);
 });
 
+// ── Gestión de servidores ─────────────────────────────────────────────────────
+
+// DELETE /api/servers/:name — elimina la carpeta y su entrada en memoria
+apiRouter.delete('/servers/:name', async (req, res) => {
+  const name = decodeURIComponent(req.params.name);
+  const state = servers[name];
+  if (!state) return res.status(404).json({ error: 'Servidor no encontrado' });
+  if (state.process && !state.process.killed)
+    return res.status(400).json({ error: 'Detén el servidor antes de eliminarlo' });
+
+  try {
+    await fs.promises.rm(state.cfg.dir, { recursive: true, force: true });
+    delete servers[name];
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Error eliminando servidor:', err);
+    res.status(500).json({ error: 'Error al eliminar el servidor' });
+  }
+});
+
+// POST /api/servers/:name/clone — copia la carpeta con un nombre nuevo
+apiRouter.post('/servers/:name/clone', async (req, res) => {
+  const name = decodeURIComponent(req.params.name);
+  const { newName } = req.body;
+  const state = servers[name];
+  if (!state) return res.status(404).json({ error: 'Servidor no encontrado' });
+  if (state.process && !state.process.killed)
+    return res.status(400).json({ error: 'Detén el servidor antes de clonarlo' });
+  if (!newName || !newName.trim())
+    return res.status(400).json({ error: 'El nombre del nuevo servidor no puede estar vacío' });
+
+  const destDir = path.join(SERVER_ROOT, newName.trim());
+  if (fs.existsSync(destDir))
+    return res.status(409).json({ error: `Ya existe un servidor con el nombre "${newName.trim()}"` });
+
+  try {
+    await fs.promises.cp(state.cfg.dir, destDir, { recursive: true });
+    refreshServers();
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Error clonando servidor:', err);
+    res.status(500).json({ error: 'Error al clonar el servidor' });
+  }
+});
+
+// POST /api/servers/upload — extrae un ZIP como nuevo servidor
+apiRouter.post('/servers/upload', upload.single('file'), async (req, res) => {
+  const serverName = req.body?.serverName?.trim();
+  if (!serverName) {
+    if (req.file) await fs.promises.unlink(req.file.path).catch(() => {});
+    return res.status(400).json({ error: 'Falta el nombre del servidor' });
+  }
+  if (!req.file) return res.status(400).json({ error: 'No se envió ningún archivo' });
+
+  const destDir = path.join(SERVER_ROOT, serverName);
+  if (fs.existsSync(destDir)) {
+    await fs.promises.unlink(req.file.path).catch(() => {});
+    return res.status(409).json({ error: `Ya existe un servidor con el nombre "${serverName}"` });
+  }
+
+  // Expand-Archive requiere extensión .zip — renombrar el archivo temporal
+  const zipPath = req.file.path + '.zip';
+  try {
+    await fs.promises.rename(req.file.path, zipPath);
+  } catch (err) {
+    await fs.promises.unlink(req.file.path).catch(() => {});
+    return res.status(500).json({ error: 'No se pudo preparar el archivo ZIP' });
+  }
+
+  try {
+    fs.mkdirSync(destDir, { recursive: true });
+
+    // Expand-Archive maneja cualquier ZIP estándar de Windows sin dependencias externas
+    await new Promise((resolve, reject) => {
+      const ps = spawn(
+        'powershell.exe',
+        [
+          '-NoProfile', '-NonInteractive', '-Command',
+          `Expand-Archive -LiteralPath '${zipPath}' -DestinationPath '${destDir}' -Force`,
+        ],
+        { shell: false }
+      );
+
+      const errChunks = [];
+      ps.stderr.on('data', (d) => errChunks.push(d));
+
+      ps.on('close', (code) => {
+        if (code === 0) resolve();
+        else reject(new Error(errChunks.join('').trim() || `Expand-Archive salió con código ${code}`));
+      });
+      ps.on('error', reject);
+    });
+
+    await fs.promises.unlink(zipPath);
+    refreshServers();
+    res.json({ ok: true });
+  } catch (err) {
+    await fs.promises.unlink(zipPath).catch(() => {});
+    await fs.promises.rm(destDir, { recursive: true, force: true }).catch(() => {});
+    console.error('Error subiendo servidor:', err);
+    res.status(500).json({ error: err.message || 'Error al extraer el servidor' });
+  }
+});
+
 app.use('/api', apiRouter);
 
 // --- Servir frontend en producción ---
@@ -844,6 +963,37 @@ io.on('connection', socket => {
     }
   });
 });
+
+// --- Graceful shutdown: mata todos los procesos Minecraft antes de salir ---
+function shutdown(signal) {
+  console.log(`\n[${signal}] Apagando backend...`);
+
+  const running = Object.values(servers).filter(s => s.process && !s.process.killed);
+
+  if (running.length === 0) {
+    process.exit(0);
+  }
+
+  let pending = running.length;
+  const done = () => { if (--pending === 0) process.exit(0); };
+
+  for (const state of running) {
+    try {
+      // taskkill /T mata todo el árbol (cmd.exe + java)
+      const killer = spawn('taskkill', ['/PID', String(state.process.pid), '/T', '/F'], { shell: false });
+      killer.on('close', done);
+      killer.on('error', done); // si falla el taskkill igual salimos
+    } catch {
+      done();
+    }
+  }
+
+  // Salida forzada tras 8 s por si algún proceso no responde
+  setTimeout(() => process.exit(0), 8000).unref();
+}
+
+process.on('SIGINT',  () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
 
 // --- Iniciar ---
 const PORT = process.env.PORT || 4000;

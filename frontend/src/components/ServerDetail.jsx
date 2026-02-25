@@ -2,16 +2,27 @@ import React, { useEffect, useRef, useState } from 'react';
 import { io } from 'socket.io-client';
 import {
   Play, Square, PowerOff, FileText, HardDrive, Download,
-  Activity, Wifi, Tag, Terminal, Send,
+  Activity, Wifi, Tag, Terminal, Send, Copy, Trash2, X,
 } from 'lucide-react';
 import { API_BASE, fetchWithToken } from '../lib/api.js';
 
-export default function ServerDetail({ server, data, onStart, onStop, onForceStop, darkMode }) {
+export default function ServerDetail({ server, data, onStart, onStop, onForceStop, onDelete, darkMode }) {
   const [logs, setLogs] = useState('');
   const [logsVisible, setLogsVisible] = useState(true);
   const [command, setCommand] = useState('');
   const [isBackingUp, setIsBackingUp] = useState(false);
   const [isCreatingLocal, setIsCreatingLocal] = useState(false);
+
+  // ── Clone ────────────────────────────────────────────────────────────────
+  const [showCloneModal, setShowCloneModal] = useState(false);
+  const [cloneName, setCloneName] = useState('');
+  const [cloning, setCloning] = useState(false);
+  const [cloneError, setCloneError] = useState('');
+
+  // ── Delete ───────────────────────────────────────────────────────────────
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
   const preRef = useRef();
   const socket = useRef(null);
@@ -60,6 +71,43 @@ export default function ServerDetail({ server, data, onStart, onStop, onForceSto
       console.error('Error backup:', err);
       alert('Error: ' + err.message);
     } finally { setIsBackingUp(false); }
+  };
+
+  const handleClone = async () => {
+    if (!cloneName.trim()) { setCloneError('El nombre no puede estar vacío'); return; }
+    setCloning(true);
+    setCloneError('');
+    try {
+      const res = await fetchWithToken(
+        `${API_BASE}/api/servers/${encodeURIComponent(server)}/clone`,
+        { method: 'POST', body: JSON.stringify({ newName: cloneName.trim() }) }
+      );
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || 'Error al clonar el servidor');
+      setShowCloneModal(false);
+      setCloneName('');
+    } catch (err) {
+      setCloneError(err.message);
+    } finally {
+      setCloning(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    setDeleteError('');
+    try {
+      const res = await fetchWithToken(
+        `${API_BASE}/api/servers/${encodeURIComponent(server)}`,
+        { method: 'DELETE' }
+      );
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || 'Error al eliminar el servidor');
+      onDelete?.();
+    } catch (err) {
+      setDeleteError(err.message);
+      setDeleting(false);
+    }
   };
 
   const createLocalBackup = async () => {
@@ -269,6 +317,32 @@ export default function ServerDetail({ server, data, onStart, onStop, onForceSto
             {isBackingUp ? 'Descargando...' : 'Descargar ZIP'}
           </button>
         </div>
+
+        {/* Fila gestión: Clonar + Eliminar */}
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            onClick={() => { setCloneName(`${server}-copia`); setCloneError(''); setShowCloneModal(true); }}
+            className={`flex items-center justify-center gap-2 py-2.5 rounded-xl font-medium text-sm border transition-all hover:scale-[1.02] active:scale-95 ${darkMode
+              ? 'border-indigo-500/30 text-indigo-300 hover:bg-indigo-500/10 hover:border-indigo-400/50'
+              : 'border-indigo-400/40 text-indigo-700 hover:bg-indigo-50 hover:border-indigo-500/60'
+            }`}
+          >
+            <Copy size={14} aria-hidden="true" /> Clonar
+          </button>
+          <button
+            onClick={() => { setDeleteError(''); setShowDeleteConfirm(true); }}
+            disabled={data.running}
+            title={data.running ? 'Detén el servidor antes de eliminarlo' : ''}
+            className={`flex items-center justify-center gap-2 py-2.5 rounded-xl font-medium text-sm border transition-all hover:scale-[1.02] active:scale-95 ${data.running
+              ? darkMode ? 'border-gray-700/30 text-gray-500 cursor-not-allowed' : 'border-gray-200 text-gray-400 cursor-not-allowed'
+              : darkMode
+                ? 'border-red-500/30 text-red-400 hover:bg-red-500/10 hover:border-red-400/50'
+                : 'border-red-400/40 text-red-600 hover:bg-red-50 hover:border-red-500/60'
+            }`}
+          >
+            <Trash2 size={14} aria-hidden="true" /> Eliminar
+          </button>
+        </div>
       </div>
 
       {/* ── Terminal (logs + consola) ──────────────────────────────────────── */}
@@ -322,6 +396,119 @@ export default function ServerDetail({ server, data, onStart, onStop, onForceSto
             </button>
           </div>
         </div>
+      )}
+      {/* ── Modal Clonar ─────────────────────────────────────────────────── */}
+      {showCloneModal && (
+        <>
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50" onClick={() => !cloning && setShowCloneModal(false)} />
+          <div className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none px-4">
+            <div
+              className={`w-full max-w-sm rounded-2xl shadow-2xl border pointer-events-auto ${darkMode
+                ? 'bg-gradient-to-br from-gray-800 to-gray-900 border-indigo-500/30'
+                : 'bg-white border-indigo-200/70'
+              }`}
+              onClick={e => e.stopPropagation()}
+            >
+              <div className={`flex items-center justify-between px-5 py-4 border-b ${darkMode ? 'border-gray-700/60' : 'border-gray-200'}`}>
+                <div className="flex items-center gap-2">
+                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${darkMode ? 'bg-indigo-500/15' : 'bg-indigo-100'}`}>
+                    <Copy size={14} className="text-indigo-400" />
+                  </div>
+                  <h3 className={`font-semibold text-sm ${darkMode ? 'text-white' : 'text-gray-900'}`}>Clonar servidor</h3>
+                </div>
+                <button onClick={() => !cloning && setShowCloneModal(false)} className={`p-1.5 rounded-lg transition-colors ${darkMode ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-100 text-gray-500'}`}>
+                  <X size={15} />
+                </button>
+              </div>
+              <div className="px-5 py-4 space-y-3">
+                <label className={`block text-xs font-medium mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                  Nombre del servidor clonado
+                </label>
+                <input
+                  type="text"
+                  value={cloneName}
+                  onChange={e => setCloneName(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleClone()}
+                  disabled={cloning}
+                  className={`w-full px-3 py-2 rounded-xl text-sm border transition-colors focus:outline-none ${darkMode
+                    ? 'bg-gray-900 border-gray-700 text-gray-200 placeholder-gray-600 focus:border-indigo-500/60'
+                    : 'bg-gray-50 border-gray-200 text-gray-800 placeholder-gray-400 focus:border-indigo-400'
+                  } disabled:opacity-50`}
+                />
+                {cloneError && (
+                  <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{cloneError}</p>
+                )}
+              </div>
+              <div className={`flex justify-end gap-2 px-5 py-4 border-t ${darkMode ? 'border-gray-700/60' : 'border-gray-200'}`}>
+                <button
+                  onClick={() => setShowCloneModal(false)} disabled={cloning}
+                  className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors ${darkMode ? 'bg-gray-700 hover:bg-gray-600 text-gray-300' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'} disabled:opacity-50`}
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleClone} disabled={cloning}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors disabled:opacity-60"
+                >
+                  {cloning ? <><span className="w-3.5 h-3.5 rounded-full border-2 border-t-transparent border-white animate-spin" />Clonando...</> : <><Copy size={14} />Clonar</>}
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ── Modal Eliminar ────────────────────────────────────────────────── */}
+      {showDeleteConfirm && (
+        <>
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50" onClick={() => !deleting && setShowDeleteConfirm(false)} />
+          <div className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none px-4">
+            <div
+              className={`w-full max-w-sm rounded-2xl shadow-2xl border pointer-events-auto ${darkMode
+                ? 'bg-gradient-to-br from-gray-800 to-gray-900 border-red-500/30'
+                : 'bg-white border-red-200/70'
+              }`}
+              onClick={e => e.stopPropagation()}
+            >
+              <div className={`flex items-center justify-between px-5 py-4 border-b ${darkMode ? 'border-gray-700/60' : 'border-gray-200'}`}>
+                <div className="flex items-center gap-2">
+                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${darkMode ? 'bg-red-500/15' : 'bg-red-100'}`}>
+                    <Trash2 size={14} className="text-red-400" />
+                  </div>
+                  <h3 className={`font-semibold text-sm ${darkMode ? 'text-white' : 'text-gray-900'}`}>Eliminar servidor</h3>
+                </div>
+                <button onClick={() => !deleting && setShowDeleteConfirm(false)} className={`p-1.5 rounded-lg transition-colors ${darkMode ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-100 text-gray-500'}`}>
+                  <X size={15} />
+                </button>
+              </div>
+              <div className="px-5 py-4">
+                <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                  ¿Seguro que quieres eliminar <span className="font-semibold text-red-400">{server}</span>?
+                </p>
+                <p className={`text-xs mt-1.5 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                  Esta acción eliminará todos los archivos del servidor permanentemente.
+                </p>
+                {deleteError && (
+                  <p className="mt-3 text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{deleteError}</p>
+                )}
+              </div>
+              <div className={`flex justify-end gap-2 px-5 py-4 border-t ${darkMode ? 'border-gray-700/60' : 'border-gray-200'}`}>
+                <button
+                  onClick={() => setShowDeleteConfirm(false)} disabled={deleting}
+                  className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors ${darkMode ? 'bg-gray-700 hover:bg-gray-600 text-gray-300' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'} disabled:opacity-50`}
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleDelete} disabled={deleting}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-red-600 hover:bg-red-500 text-white transition-colors disabled:opacity-60"
+                >
+                  {deleting ? <><span className="w-3.5 h-3.5 rounded-full border-2 border-t-transparent border-white animate-spin" />Eliminando...</> : <><Trash2 size={14} />Eliminar</>}
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
       )}
     </div>
   );

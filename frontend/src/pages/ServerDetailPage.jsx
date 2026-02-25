@@ -69,6 +69,7 @@ export default function ServerDetailPage({ servers, startServer, stopServer, for
             onStart={startServer}
             onStop={stopServer}
             onForceStop={forceStopServer}
+            onDelete={() => navigate('/dashboard')}
             darkMode={darkMode}
           />
 
