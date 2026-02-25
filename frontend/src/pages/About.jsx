@@ -64,7 +64,7 @@ export default function About({ darkMode }) {
 
         {/* ── Foto compartida ─────────────────────────────────────────────────── */}
         <div className="flex justify-center mb-14">
-          <div className={`relative rounded-3xl overflow-hidden shadow-2xl border ${darkMode ? "border-white/8 shadow-purple-900/50" : "border-purple-200/60 shadow-purple-300/30"}`}>
+          <div className={`relative rounded-3xl overflow-hidden shadow-2xl border ${darkMode ? "border-purple-500/25 shadow-purple-900/50" : "border-purple-200/60 shadow-purple-300/30"}`}>
             <img
               src="/frontend/src/assets/creators.jpg"
               alt="Alejandro S. y Jesús G., desarrolladores de Cube Watcher"
@@ -72,7 +72,7 @@ export default function About({ darkMode }) {
             />
             <div className={`absolute inset-0 ${darkMode ? "bg-gradient-to-t from-gray-900/70 via-transparent to-transparent" : "bg-gradient-to-t from-purple-900/30 via-transparent to-transparent"}`} />
             <div className="absolute bottom-4 left-0 right-0 flex justify-center">
-              <span className={`text-xs font-medium px-3 py-1.5 rounded-full backdrop-blur-sm border ${darkMode ? "bg-black/50 border-white/10 text-gray-300" : "bg-white/70 border-purple-200/60 text-gray-700"}`}>
+              <span className={`text-xs font-medium px-3 py-1.5 rounded-full backdrop-blur-sm border ${darkMode ? "bg-gray-900/70 border-gray-600/50 text-gray-300" : "bg-white/70 border-purple-200/60 text-gray-700"}`}>
                 Los creadores
               </span>
             </div>
@@ -85,7 +85,7 @@ export default function About({ darkMode }) {
             <div
               key={name}
               className={`rounded-2xl border p-6 flex flex-col gap-4 transition-all hover:-translate-y-0.5 ${darkMode
-                ? "bg-white/4 border-white/8 hover:border-purple-500/30 shadow-lg"
+                ? "bg-gradient-to-br from-gray-800/90 via-purple-950/10 to-gray-900 border-purple-500/25 hover:border-purple-400/50 shadow-lg"
                 : "bg-white border-purple-100 hover:border-purple-200 shadow-sm hover:shadow-md"
               }`}
             >
@@ -126,7 +126,7 @@ export default function About({ darkMode }) {
                     target="_blank"
                     rel="noopener noreferrer"
                     className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold border transition-all hover:scale-[1.02] active:scale-95 ${darkMode
-                      ? "bg-white/5 border-white/10 text-gray-300 hover:bg-white/10 hover:border-white/20"
+                      ? "bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700 hover:border-gray-600"
                       : "bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100"
                     }`}
                   >
@@ -140,7 +140,7 @@ export default function About({ darkMode }) {
         </div>
 
         {/* ── Stack tecnológico ───────────────────────────────────────────────── */}
-        <div className={`rounded-2xl border p-6 ${darkMode ? "bg-white/4 border-white/8" : "bg-white border-purple-100 shadow-sm"}`}>
+        <div className={`rounded-2xl border p-6 ${darkMode ? "bg-gradient-to-br from-gray-800/90 via-purple-950/10 to-gray-900 border-purple-500/25" : "bg-white border-purple-100 shadow-sm"}`}>
           <div className="flex items-center gap-2 mb-5">
             <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${darkMode ? "bg-purple-500/15" : "bg-purple-100"}`}>
               <Layers size={14} className="text-purple-400" />

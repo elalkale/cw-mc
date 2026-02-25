@@ -65,7 +65,7 @@ export default function Home({ darkMode }) {
       {/* ── Hero ──────────────────────────────────────────────────────────── */}
       <section className="relative z-10 flex flex-col items-center text-center pt-20 pb-12 px-4">
         {/* Logo */}
-        <div className={`mb-6 p-4 rounded-3xl shadow-2xl border ${darkMode ? "bg-white/5 border-white/10 shadow-purple-900/40" : "bg-white/70 border-purple-200/60 shadow-purple-200/60"}`}>
+        <div className={`mb-6 p-4 rounded-3xl shadow-2xl border ${darkMode ? "bg-gray-800/60 border-purple-500/25 shadow-purple-900/40" : "bg-white/70 border-purple-200/60 shadow-purple-200/60"}`}>
           <img
             src="/frontend/src/assets/logo.png"
             alt="Cube Watcher logo"
@@ -101,7 +101,7 @@ export default function Home({ darkMode }) {
           </Link>
           <Link
             to="/catalog"
-            className={`px-8 py-3 text-sm sm:text-base rounded-xl font-semibold border transition-all hover:scale-[1.03] active:scale-95 ${darkMode ? "bg-white/5 border-white/10 text-gray-300 hover:bg-white/10" : "bg-white border-purple-200 text-purple-700 hover:bg-purple-50 shadow-sm"}`}
+            className={`px-8 py-3 text-sm sm:text-base rounded-xl font-semibold border transition-all hover:scale-[1.03] active:scale-95 ${darkMode ? "bg-gray-800/80 border-gray-700/60 text-gray-300 hover:bg-gray-800 hover:border-gray-600" : "bg-white border-purple-200 text-purple-700 hover:bg-purple-50 shadow-sm"}`}
           >
             Ver catálogo
           </Link>
@@ -122,7 +122,7 @@ export default function Home({ darkMode }) {
           {FEATURES.map(({ icon: Icon, color, glow, title, desc }) => (
             <div
               key={title}
-              className={`rounded-2xl border p-5 flex flex-col gap-3 transition-all hover:-translate-y-0.5 hover:shadow-xl ${glow} ${darkMode ? "bg-white/4 border-white/8 hover:border-white/14" : "bg-white/80 border-purple-100 hover:border-purple-200 shadow-sm"}`}
+              className={`rounded-2xl border p-5 flex flex-col gap-3 transition-all hover:-translate-y-0.5 hover:shadow-xl ${glow} ${darkMode ? "bg-gradient-to-br from-gray-800/90 via-purple-950/10 to-gray-900 border-purple-500/25 hover:border-purple-400/40" : "bg-white/80 border-purple-100 hover:border-purple-200 shadow-sm"}`}
             >
               <div className={`w-9 h-9 rounded-xl flex items-center justify-center bg-gradient-to-br ${color} shadow-lg`}>
                 <Icon size={17} className="text-white" />

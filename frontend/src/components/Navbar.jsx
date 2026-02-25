@@ -30,7 +30,7 @@ export default function Navbar({ darkMode, toggleDarkMode, onLogout, logoutBtnRe
         ? "bg-gradient-to-r from-purple-500/20 to-pink-500/10 text-purple-300 border border-purple-500/25 shadow-sm shadow-purple-900/20"
         : "bg-gradient-to-r from-purple-100 to-pink-50 text-purple-700 border border-purple-200/80 shadow-sm shadow-purple-100"
       : darkMode
-        ? "text-gray-400 hover:text-gray-200 hover:bg-white/6 border border-transparent"
+        ? "text-gray-400 hover:text-gray-200 hover:bg-gray-700/50 border border-transparent"
         : "text-gray-500 hover:text-gray-800 hover:bg-gray-100/80 border border-transparent"
       }`;
   };
@@ -67,7 +67,7 @@ export default function Navbar({ darkMode, toggleDarkMode, onLogout, logoutBtnRe
           </Link>
 
           {/* Separador vertical */}
-          <div className={`hidden md:block w-px h-5 mx-1 ${darkMode ? "bg-white/10" : "bg-gray-200"}`} aria-hidden="true" />
+          <div className={`hidden md:block w-px h-5 mx-1 ${darkMode ? "bg-gray-600/50" : "bg-gray-200"}`} aria-hidden="true" />
 
           {/* ── Links de navegación en ESCRITORIO (ocultos en móvil) ── */}
           <nav
@@ -92,7 +92,7 @@ export default function Navbar({ darkMode, toggleDarkMode, onLogout, logoutBtnRe
           <div className="flex items-center gap-1">
 
             {/* Grupo de botones: dark mode + settings + logout */}
-            <div className={`flex items-center gap-0.5 px-1 py-1 rounded-xl border ${darkMode ? "bg-white/5 border-white/10" : "bg-gray-100/80 border-gray-200"}`}>
+            <div className={`flex items-center gap-0.5 px-1 py-1 rounded-xl border ${darkMode ? "bg-gray-800/80 border-gray-700/60" : "bg-gray-100/80 border-gray-200"}`}>
               <button
                 onClick={toggleDarkMode}
                 className={`p-1.5 rounded-lg transition-all hover:scale-105 active:scale-95 ${darkMode
@@ -105,12 +105,12 @@ export default function Navbar({ darkMode, toggleDarkMode, onLogout, logoutBtnRe
                 {darkMode ? <Sun size={16} aria-hidden="true" /> : <Moon size={16} aria-hidden="true" />}
               </button>
 
-              <div className={`w-px h-4 ${darkMode ? "bg-white/10" : "bg-gray-300"}`} aria-hidden="true" />
+              <div className={`w-px h-4 ${darkMode ? "bg-gray-600/50" : "bg-gray-300"}`} aria-hidden="true" />
 
               <button
                 onClick={() => setIsSettingsOpen(true)}
                 className={`p-1.5 rounded-lg transition-all hover:scale-105 active:scale-95 ${darkMode
-                  ? "text-gray-400 hover:bg-white/8 hover:text-gray-200"
+                  ? "text-gray-400 hover:bg-gray-700/60 hover:text-gray-200"
                   : "text-gray-500 hover:bg-white hover:text-gray-800 hover:shadow-sm"
                 }`}
                 aria-label="Abrir configuración"
@@ -118,7 +118,7 @@ export default function Navbar({ darkMode, toggleDarkMode, onLogout, logoutBtnRe
                 <SettingsIcon size={16} aria-hidden="true" />
               </button>
 
-              <div className={`w-px h-4 ${darkMode ? "bg-white/10" : "bg-gray-300"}`} aria-hidden="true" />
+              <div className={`w-px h-4 ${darkMode ? "bg-gray-600/50" : "bg-gray-300"}`} aria-hidden="true" />
 
               <button
                 ref={logoutBtnRef}
@@ -177,7 +177,7 @@ export default function Navbar({ darkMode, toggleDarkMode, onLogout, logoutBtnRe
             <button
               onClick={() => setIsOpen(!isOpen)}
               className={`p-2 rounded-xl md:hidden transition-all hover:scale-105 active:scale-95 ${darkMode
-                ? "text-gray-400 hover:bg-white/8 hover:text-gray-200"
+                ? "text-gray-400 hover:bg-gray-700/60 hover:text-gray-200"
                 : "text-gray-500 hover:bg-gray-100 hover:text-gray-800"
               }`}
               aria-label={isOpen ? "Cerrar menú de navegación" : "Abrir menú de navegación"}
