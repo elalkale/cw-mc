@@ -1,5 +1,5 @@
 import React from 'react';
-import { useState, useEffect, useRef, memo } from 'react';
+import { useState, useEffect, useRef, memo, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Download, ExternalLink, ChevronLeft, ChevronRight } from 'lucide-react';
 import { API_BASE, fetchWithToken } from '../lib/api.js';
@@ -58,6 +58,26 @@ export default function ModpackDetail({ darkMode }) {
 
   // Datos de CurseForge (logo full, summary, screenshots, description)
   const [cfMod, setCfMod] = useState(null);
+
+  // Mezcla los datos del JSON con los frescos de la API cuando llegan
+  const livePack = useMemo(() => {
+    if (!cfMod || !localPack) return localPack;
+    const liveLoaders = cfMod.latestFilesIndexes?.length
+      ? [...new Set(cfMod.latestFilesIndexes.map(f => f.modLoader).filter(Boolean))]
+      : null;
+    const liveVersions = cfMod.latestFilesIndexes?.length
+      ? [...new Set(cfMod.latestFilesIndexes.map(f => f.gameVersion).filter(Boolean))]
+      : null;
+    return {
+      ...localPack,
+      downloadCount: cfMod.downloadCount ?? localPack.downloadCount,
+      gamePopularityRank: cfMod.gamePopularityRank ?? localPack.gamePopularityRank,
+      dateModified: cfMod.dateModified ?? localPack.dateModified,
+      dateReleased: cfMod.dateReleased ?? localPack.dateReleased,
+      ...(liveLoaders && { modLoaders: liveLoaders }),
+      ...(liveVersions && { gameVersions: liveVersions }),
+    };
+  }, [cfMod, localPack]);
   const [description, setDescription] = useState('');
   const [loadingMod, setLoadingMod] = useState(true);
   const [loadingDesc, setLoadingDesc] = useState(true);
@@ -218,30 +238,53 @@ export default function ModpackDetail({ darkMode }) {
 
         {/* Info */}
         <div className="flex-1 min-w-0">
-          <h1 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-purple-300 to-pink-300 bg-clip-text text-transparent mb-2 leading-tight">
+          <h1 className={`text-2xl md:text-3xl font-bold bg-gradient-to-r bg-clip-text text-transparent mb-2 leading-tight ${darkMode ? 'from-purple-300 to-pink-300' : 'from-purple-700 to-pink-600'}`}>
             {localPack.name}
           </h1>
 
           {cfMod?.summary && (
-            <p className={`text-sm mb-4 leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+            <p className={`text-sm mb-3 leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
               {cfMod.summary}
             </p>
           )}
 
+          {/* Creador */}
+          {cfMod?.authors?.length > 0 && (
+            <div className="flex items-center gap-2 mb-4">
+              <span className={`text-xs font-semibold uppercase tracking-wide ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Creado por</span>
+              <div className="flex flex-wrap gap-1.5">
+                {cfMod.authors.map(author => (
+                  <a
+                    key={author.id}
+                    href={author.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={`text-xs px-2.5 py-1 rounded-full border font-medium transition hover:scale-105 ${darkMode
+                      ? 'bg-purple-600/20 text-purple-300 border-purple-500/40 hover:bg-purple-600/35'
+                      : 'bg-purple-100 text-purple-700 border-purple-300 hover:bg-purple-200'
+                    }`}
+                  >
+                    {author.name}
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Loaders */}
           <div className="flex flex-wrap gap-2 mb-4">
-            {localPack.modLoaders.map(l => LOADER_NAMES[l] && (
+            {livePack.modLoaders.map(l => LOADER_NAMES[l] && (
               <span key={l} className={`px-2 py-0.5 rounded-full text-xs border font-medium ${LOADER_COLORS[l] || 'bg-gray-500/20 text-gray-300 border-gray-500/30'}`}>
                 {LOADER_NAMES[l]}
               </span>
             ))}
-            {localPack.gameVersions.slice(0, 4).map(v => (
+            {livePack.gameVersions.slice(0, 4).map(v => (
               <span key={v} className={`px-2 py-0.5 rounded text-xs border ${darkMode ? 'bg-gray-700/50 text-gray-300 border-gray-600' : 'bg-gray-200 text-gray-700 border-gray-300'}`}>
                 {v}
               </span>
             ))}
-            {localPack.gameVersions.length > 4 && (
-              <span className="text-xs text-gray-500 self-center">+{localPack.gameVersions.length - 4} más</span>
+            {livePack.gameVersions.length > 4 && (
+              <span className="text-xs text-gray-500 self-center">+{livePack.gameVersions.length - 4} más</span>
             )}
           </div>
 
@@ -282,10 +325,10 @@ export default function ModpackDetail({ darkMode }) {
 
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-        <StatBadge label="Descargas" value={localPack.downloadCount.toLocaleString()} darkMode={darkMode} />
-        <StatBadge label="Publicado" value={new Date(localPack.dateReleased).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })} darkMode={darkMode} />
-        <StatBadge label="Actualizado" value={new Date(localPack.dateModified).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })} darkMode={darkMode} />
-        <StatBadge label="Popularidad" value={`#${localPack.gamePopularityRank.toLocaleString()}`} darkMode={darkMode} />
+        <StatBadge label="Descargas" value={livePack.downloadCount.toLocaleString()} darkMode={darkMode} />
+        <StatBadge label="Publicado" value={new Date(livePack.dateReleased).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })} darkMode={darkMode} />
+        <StatBadge label="Actualizado" value={new Date(livePack.dateModified).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })} darkMode={darkMode} />
+        <StatBadge label="Popularidad" value={`#${livePack.gamePopularityRank.toLocaleString()}`} darkMode={darkMode} />
       </div>
 
       {/* ── Pestañas ── */}
