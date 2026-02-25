@@ -1,7 +1,7 @@
 import React from 'react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, memo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Download, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Download, ExternalLink, ChevronLeft, ChevronRight } from 'lucide-react';
 import { API_BASE, fetchWithToken } from '../lib/api.js';
 import modpacksData from '../resources/modpacks_with_server.json';
 
@@ -12,6 +12,26 @@ const LOADER_COLORS = {
   5: 'bg-purple-500/20 text-purple-300 border-purple-500/30',
   6: 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30',
 };
+
+// Componente aislado para la descripción HTML.
+// Al ser memo + innerHTML directo, React nunca vuelve a tocar el DOM interno
+// aunque el padre re-renderice, evitando que el navegador reintente las imágenes rotas.
+const DescriptionHTML = memo(function DescriptionHTML({ html, darkMode }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!ref.current || !html) return;
+    ref.current.innerHTML = html;
+    ref.current.querySelectorAll('img').forEach(img => {
+      img.onerror = () => { img.style.display = 'none'; };
+    });
+  }, [html]);
+  return (
+    <div
+      ref={ref}
+      className={`prose prose-sm max-w-none ${darkMode ? 'prose-invert' : ''} [&_img]:rounded-lg [&_img]:max-w-full [&_a]:text-purple-400`}
+    />
+  );
+});
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -46,6 +66,16 @@ export default function ModpackDetail({ darkMode }) {
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState('');
 
+  // Lista de versiones / archivos del modpack
+  const [files, setFiles] = useState([]);
+  const [loadingFiles, setLoadingFiles] = useState(true);
+  const [filesPage, setFilesPage] = useState(0);       // índice (0-based × 50)
+  const [filesTotalCount, setFilesTotalCount] = useState(0);
+  const [downloadingFile, setDownloadingFile] = useState(null); // fileId en curso
+
+  // Pestaña activa
+  const [tab, setTab] = useState('descripcion');
+
   // Visor de screenshot a pantalla completa
   const [lightbox, setLightbox] = useState(null);
 
@@ -72,6 +102,21 @@ export default function ModpackDetail({ darkMode }) {
       .finally(() => setLoadingDesc(false));
   }, [modId]);
 
+  // Fetch lista de archivos (paginada, 50 por página)
+  useEffect(() => {
+    if (!modId) return;
+    setLoadingFiles(true);
+    setFiles([]);
+    fetchWithToken(`${API_BASE}/api/curseforge/mod/${modId}/files?index=${filesPage * 50}&pageSize=50`)
+      .then(r => r.json())
+      .then(data => {
+        if (data?.data) setFiles(data.data);
+        if (data?.pagination?.totalCount != null) setFilesTotalCount(data.pagination.totalCount);
+      })
+      .catch(console.error)
+      .finally(() => setLoadingFiles(false));
+  }, [modId, filesPage]);
+
   // Cerrar lightbox con Escape
   useEffect(() => {
     if (!lightbox) return;
@@ -79,6 +124,23 @@ export default function ModpackDetail({ darkMode }) {
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
   }, [lightbox]);
+
+  const downloadFile = async (fileId) => {
+    setDownloadingFile(fileId);
+    try {
+      const res = await fetchWithToken(
+        `${API_BASE}/api/curseforge/mod/${modId}/file/${fileId}/download-url`
+      );
+      const data = await res.json();
+      const url = data?.data;
+      if (!url) throw new Error('URL no disponible');
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } catch {
+      // silencioso; el botón simplemente vuelve a su estado normal
+    } finally {
+      setDownloadingFile(null);
+    }
+  };
 
   const downloadServerPack = async () => {
     if (!localPack?.serverFileId) return;
@@ -226,51 +288,172 @@ export default function ModpackDetail({ darkMode }) {
         <StatBadge label="Popularidad" value={`#${localPack.gamePopularityRank.toLocaleString()}`} darkMode={darkMode} />
       </div>
 
-      {/* Screenshots */}
-      {cfMod?.screenshots?.length > 0 && (
-        <section className={`${cardClass} mb-6`}>
-          <h2 className={`text-lg font-bold mb-4 ${darkMode ? 'text-purple-300' : 'text-purple-700'}`}>
-            Screenshots
-          </h2>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {cfMod.screenshots.map(ss => (
-              <button
-                key={ss.id}
-                onClick={() => setLightbox(ss.url || ss.thumbnailUrl)}
-                className="aspect-video overflow-hidden rounded-lg border border-purple-500/20 hover:border-purple-400/60 transition group"
-                aria-label={ss.title || 'Ver screenshot en grande'}
-              >
-                <img
-                  src={ss.thumbnailUrl}
-                  alt={ss.title || `Screenshot ${ss.id}`}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                  loading="lazy"
-                />
-              </button>
-            ))}
-          </div>
-        </section>
-      )}
+      {/* ── Pestañas ── */}
+      <div className={`flex gap-1 p-1 rounded-xl mb-4 ${darkMode ? 'bg-gray-800/60' : 'bg-gray-200/60'}`} role="tablist">
+        {[
+          { id: 'descripcion', label: 'Descripción' },
+          { id: 'screenshots', label: `Screenshots${cfMod?.screenshots?.length ? ` (${cfMod.screenshots.length})` : ''}` },
+          { id: 'versiones',   label: `Versiones${filesTotalCount ? ` (${filesTotalCount})` : ''}` },
+        ].map(t => (
+          <button
+            key={t.id}
+            role="tab"
+            aria-selected={tab === t.id}
+            onClick={() => setTab(t.id)}
+            className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${tab === t.id
+              ? 'bg-purple-600 text-white shadow'
+              : darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
 
-      {/* Descripción HTML */}
+      {/* ── Contenido de pestaña ── */}
       <section className={cardClass}>
-        <h2 className={`text-lg font-bold mb-4 ${darkMode ? 'text-purple-300' : 'text-purple-700'}`}>
-          Descripción
-        </h2>
-        {loadingDesc ? (
-          <div className="space-y-3">
-            {[...Array(4)].map((_, i) => (
-              <div key={i} className="h-4 rounded bg-gray-700/50 animate-pulse" style={{ width: `${85 - i * 10}%` }} />
-            ))}
-          </div>
-        ) : description ? (
-          <div
-            className={`prose prose-sm max-w-none ${darkMode ? 'prose-invert' : ''} [&_img]:rounded-lg [&_img]:max-w-full [&_a]:text-purple-400`}
-            dangerouslySetInnerHTML={{ __html: description }}
-          />
-        ) : (
-          <p className={darkMode ? 'text-gray-400' : 'text-gray-600'}>Sin descripción disponible.</p>
+
+        {/* Descripción */}
+        {tab === 'descripcion' && (
+          loadingDesc ? (
+            <div className="space-y-3">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="h-4 rounded bg-gray-700/50 animate-pulse" style={{ width: `${85 - i * 10}%` }} />
+              ))}
+            </div>
+          ) : description ? (
+            <DescriptionHTML html={description} darkMode={darkMode} />
+          ) : (
+            <p className={darkMode ? 'text-gray-400' : 'text-gray-600'}>Sin descripción disponible.</p>
+          )
         )}
+
+        {/* Screenshots */}
+        {tab === 'screenshots' && (
+          !cfMod?.screenshots?.length ? (
+            <p className={darkMode ? 'text-gray-400' : 'text-gray-600'}>No hay screenshots disponibles.</p>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {cfMod.screenshots.map(ss => (
+                <button
+                  key={ss.id}
+                  onClick={() => setLightbox(ss.url || ss.thumbnailUrl)}
+                  className="aspect-video overflow-hidden rounded-lg border border-purple-500/20 hover:border-purple-400/60 transition group"
+                  aria-label={ss.title || 'Ver screenshot en grande'}
+                >
+                  <img
+                    src={ss.thumbnailUrl}
+                    alt={ss.title || `Screenshot ${ss.id}`}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    loading="lazy"
+                  />
+                </button>
+              ))}
+            </div>
+          )
+        )}
+
+        {/* Versiones */}
+        {tab === 'versiones' && (
+          <>
+            {filesTotalCount > 0 && (
+              <p className={`text-xs mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                {filesTotalCount.toLocaleString()} archivos · página {filesPage + 1} de {Math.ceil(filesTotalCount / 50)}
+              </p>
+            )}
+
+            {loadingFiles ? (
+              <div className="space-y-2">
+                {[...Array(6)].map((_, i) => (
+                  <div key={i} className={`h-10 rounded-lg animate-pulse ${darkMode ? 'bg-gray-700/50' : 'bg-gray-200'}`} />
+                ))}
+              </div>
+            ) : files.filter(f => f.serverPackFileId || f.isServerPack).length === 0 ? (
+              <p className={darkMode ? 'text-gray-400' : 'text-gray-600'}>No hay server packs disponibles en esta página.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className={`text-xs uppercase tracking-wide border-b ${darkMode ? 'text-gray-400 border-gray-700' : 'text-gray-500 border-gray-200'}`}>
+                      <th className="pb-2 text-left font-medium">Nombre</th>
+                      <th className="pb-2 text-left font-medium">Versión MC</th>
+                      <th className="pb-2 text-left font-medium">Fecha</th>
+                      <th className="pb-2 text-right font-medium">Descarga</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-700/30">
+                    {files.filter(f => f.serverPackFileId || f.isServerPack).map(file => (
+                      <tr key={file.id} className={`transition-colors ${darkMode ? 'hover:bg-gray-700/30' : 'hover:bg-gray-100'}`}>
+                        <td className="py-2.5 pr-4">
+                          <span className={`line-clamp-1 ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
+                            {file.displayName || file.fileName}
+                          </span>
+                        </td>
+                        <td className="py-2.5 pr-4">
+                          <div className="flex flex-wrap gap-1">
+                            {(file.gameVersions ?? []).filter(v => /^\d+\.\d+/.test(v)).slice(0, 3).map(v => (
+                              <span key={v} className={`px-1.5 py-0.5 rounded text-xs border ${darkMode ? 'bg-gray-700/50 text-gray-300 border-gray-600' : 'bg-gray-200 text-gray-700 border-gray-300'}`}>
+                                {v}
+                              </span>
+                            ))}
+                          </div>
+                        </td>
+                        <td className={`py-2.5 pr-4 whitespace-nowrap ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                          {new Date(file.fileDate).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })}
+                        </td>
+                        <td className="py-2.5 text-right">
+                          <button
+                            onClick={() => downloadFile(file.serverPackFileId ?? file.id)}
+                            disabled={downloadingFile === (file.serverPackFileId ?? file.id)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-purple-600/80 hover:bg-purple-600 text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
+                            aria-label={`Descargar ${file.displayName}`}
+                          >
+                            {downloadingFile === (file.serverPackFileId ?? file.id)
+                              ? <span className="w-3 h-3 rounded-full border-2 border-t-transparent border-white animate-spin" />
+                              : <Download size={13} aria-hidden="true" />
+                            }
+                            Server pack
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {filesTotalCount > 50 && (
+              <div className="flex items-center justify-center gap-3 mt-4">
+                <button
+                  onClick={() => setFilesPage(p => Math.max(0, p - 1))}
+                  disabled={filesPage === 0}
+                  className={`p-1.5 rounded-lg transition ${filesPage === 0
+                    ? `opacity-40 cursor-not-allowed ${darkMode ? 'bg-gray-700' : 'bg-gray-200'}`
+                    : 'bg-purple-600 hover:bg-purple-700 text-white'
+                  }`}
+                  aria-label="Página anterior"
+                >
+                  <ChevronLeft size={16} />
+                </button>
+                <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                  {filesPage + 1} / {Math.ceil(filesTotalCount / 50)}
+                </span>
+                <button
+                  onClick={() => setFilesPage(p => Math.min(Math.ceil(filesTotalCount / 50) - 1, p + 1))}
+                  disabled={filesPage >= Math.ceil(filesTotalCount / 50) - 1}
+                  className={`p-1.5 rounded-lg transition ${filesPage >= Math.ceil(filesTotalCount / 50) - 1
+                    ? `opacity-40 cursor-not-allowed ${darkMode ? 'bg-gray-700' : 'bg-gray-200'}`
+                    : 'bg-purple-600 hover:bg-purple-700 text-white'
+                  }`}
+                  aria-label="Página siguiente"
+                >
+                  <ChevronRight size={16} />
+                </button>
+              </div>
+            )}
+          </>
+        )}
+
       </section>
 
       {/* Lightbox de screenshots */}

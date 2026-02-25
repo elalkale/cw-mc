@@ -621,6 +621,24 @@ apiRouter.get('/curseforge/mod/:modId/description', async (req, res) => {
   }
 });
 
+// GET /api/curseforge/mod/:modId/files?index=0&pageSize=50
+// Lista todos los archivos de un mod (para el historial de versiones)
+apiRouter.get('/curseforge/mod/:modId/files', async (req, res) => {
+  if (!process.env.CURSEFORGE_API_TOKEN) return res.json({ data: [], pagination: {} });
+  try {
+    const { index = 0, pageSize = 50 } = req.query;
+    const resp = await fetch(
+      `${CF_BASE}/mods/${req.params.modId}/files?index=${index}&pageSize=${pageSize}`,
+      { headers: cfHeaders() }
+    );
+    const data = await resp.json();
+    res.json(data);
+  } catch (err) {
+    console.error('CurseForge files error:', err);
+    res.status(500).json({ error: 'Error consultando CurseForge' });
+  }
+});
+
 // GET /api/curseforge/mod/:modId/file/:fileId/download-url
 // Devuelve la URL de descarga del server pack
 apiRouter.get('/curseforge/mod/:modId/file/:fileId/download-url', async (req, res) => {

@@ -148,6 +148,13 @@ export default function ServerCatalog({ darkMode }) {
   // IDs ya solicitados al API (evita duplicar peticiones al navegar entre páginas)
   const fetchedIds = useRef(new Set());
 
+  // Scroll al inicio al cambiar de página (se salta el mount inicial)
+  const isFirstRender = useRef(true);
+  useEffect(() => {
+    if (isFirstRender.current) { isFirstRender.current = false; return; }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [page]);
+
   // ── Filtrado y ordenación (solo datos locales → instantáneo) ────────────────
 
   const filtered = useMemo(() => {
