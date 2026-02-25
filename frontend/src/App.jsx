@@ -48,6 +48,12 @@ function useFocusTrap(active) {
 export default function App() {
   const [loggedIn, setLoggedIn] = useState(false);
   const [servers, setServers] = useState({});
+  const [installations, setInstallations] = useState(() => {
+    try {
+      const saved = localStorage.getItem('cw-installations');
+      return saved ? JSON.parse(saved) : {};
+    } catch { return {}; }
+  });
   const [darkMode, setDarkMode] = useState(() => {
     const saved = localStorage.getItem('darkMode');
     return saved ? JSON.parse(saved) : true;
@@ -60,6 +66,18 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('darkMode', JSON.stringify(darkMode));
   }, [darkMode]);
+
+  // Persiste solo las instalaciones en curso (no las finalizadas)
+  useEffect(() => {
+    const pending = Object.fromEntries(
+      Object.entries(installations).filter(([, v]) => v.status === 'installing')
+    );
+    if (Object.keys(pending).length === 0) {
+      localStorage.removeItem('cw-installations');
+    } else {
+      localStorage.setItem('cw-installations', JSON.stringify(pending));
+    }
+  }, [installations]);
 
   const toggleDarkMode = () => setDarkMode(prev => !prev);
 
@@ -107,6 +125,40 @@ export default function App() {
     return () => clearInterval(interval);
   }, [loggedIn]);
 
+  // Polling global de instalaciones — funciona aunque el usuario navegue o recargue
+  const installationsRef = useRef(installations);
+  useEffect(() => { installationsRef.current = installations; }, [installations]);
+
+  useEffect(() => {
+    if (!loggedIn) return;
+    const interval = setInterval(async () => {
+      const pending = Object.entries(installationsRef.current)
+        .filter(([, v]) => v.status === 'installing');
+      for (const [installId] of pending) {
+        try {
+          const res = await fetchWithToken(`${API_BASE}/api/install/${installId}`);
+          if (!res.ok) {
+            // 404 = backend reiniciado y perdió el estado → marcar como error para limpiar localStorage
+            const msg = res.status === 404 ? 'Instalación perdida (servidor reiniciado)' : `Error inesperado (${res.status})`;
+            setInstallations(prev => ({
+              ...prev,
+              [installId]: { ...prev[installId], status: 'error', error: msg },
+            }));
+            continue;
+          }
+          const data = await res.json();
+          if (data.status === 'done' || data.status === 'error') {
+            setInstallations(prev => ({
+              ...prev,
+              [installId]: { ...prev[installId], status: data.status, error: data.error },
+            }));
+          }
+        } catch { /* error de red, reintenta en el siguiente ciclo */ }
+      }
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [loggedIn]);
+
   const startServer = async (name) => {
     await fetchWithToken(`${API_BASE}/api/start`, {
       method: "POST",
@@ -133,6 +185,19 @@ export default function App() {
       console.error("Error sendCommand:", err);
     }
   };
+
+  const addInstall = useCallback((installId, info) => {
+    // info.status puede ser 'error' si falló antes de iniciarse; por defecto 'installing'
+    setInstallations(prev => ({ ...prev, [installId]: { status: 'installing', ...info } }));
+  }, []);
+
+  const clearInstall = useCallback((installId) => {
+    setInstallations(prev => {
+      const next = { ...prev };
+      delete next[installId];
+      return next;
+    });
+  }, []);
 
   const openLogoutModal = () => setShowLogoutConfirm(true);
 
@@ -205,6 +270,7 @@ export default function App() {
                     stopServer={stopServer}
                     sendCommand={sendCommand}
                     darkMode={darkMode}
+                    installations={installations}
                   />
                 }
               />
@@ -221,7 +287,7 @@ export default function App() {
                 }
               />
               <Route path="catalog" element={<ServerCatalog darkMode={darkMode} />} />
-              <Route path="catalog/:modId" element={<ModpackDetail darkMode={darkMode} />} />
+              <Route path="catalog/:modId" element={<ModpackDetail darkMode={darkMode} onInstallStart={addInstall} onInstallClear={clearInstall} installations={installations} />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </main>

@@ -12,6 +12,10 @@ import dotenv from 'dotenv';
 import archiver from 'archiver';
 import multer from 'multer';
 import os from 'os';
+import { createWriteStream } from 'fs';
+import { Readable } from 'stream';
+import unzipper from 'unzipper';
+import crypto from 'crypto';
 
 // --- __dirname en ESM (antes de dotenv para poder calcular la ruta del .env) ---
 const __filename = fileURLToPath(import.meta.url);
@@ -654,6 +658,106 @@ apiRouter.get('/curseforge/mod/:modId/file/:fileId/download-url', async (req, re
     console.error('CurseForge download-url error:', err);
     res.status(500).json({ error: 'Error consultando CurseForge' });
   }
+});
+
+// --- Instalación de server packs ---
+const installs = {}; // { [installId]: { status, error, serverName } }
+
+async function runInstall(installId, modId, fileId, destDir) {
+  try {
+    // 1. Obtener URL de descarga de CurseForge
+    const urlResp = await fetch(
+      `${CF_BASE}/mods/${modId}/files/${fileId}/download-url`,
+      { headers: cfHeaders() }
+    );
+    const urlData = await urlResp.json();
+    const downloadUrl = urlData?.data;
+    if (!downloadUrl) throw new Error('No se pudo obtener la URL de descarga');
+
+    // 2. Descargar el ZIP a un archivo temporal
+    const tmpFile = path.join(os.tmpdir(), `cw-mc-install-${installId}.zip`);
+    const dlResp = await fetch(downloadUrl);
+    if (!dlResp.ok) throw new Error(`Error descargando: ${dlResp.status}`);
+
+    await new Promise((resolve, reject) => {
+      const dest = createWriteStream(tmpFile);
+      Readable.fromWeb(dlResp.body).pipe(dest);
+      dest.on('finish', resolve);
+      dest.on('error', reject);
+    });
+
+    // 3. Extraer el ZIP al directorio de destino
+    fs.mkdirSync(destDir, { recursive: true });
+    await new Promise((resolve, reject) => {
+      fs.createReadStream(tmpFile)
+        .pipe(unzipper.Extract({ path: destDir }))
+        .on('close', resolve)
+        .on('error', reject);
+    });
+
+    // 4. Limpiar temp
+    fs.rmSync(tmpFile, { force: true });
+
+    // 5. Ejecutar install.bat (Windows) o install.sh (Linux/Mac) si existe
+    const batPath = path.join(destDir, 'install.bat');
+    const shPath  = path.join(destDir, 'install.sh');
+
+    if (fs.existsSync(batPath)) {
+      await new Promise((resolve, reject) => {
+        const proc = spawn('cmd.exe', ['/c', 'install.bat'], { cwd: destDir });
+        proc.on('close', code => {
+          if (code === 0) resolve();
+          else reject(new Error(`install.bat terminó con código ${code}`));
+        });
+        proc.on('error', reject);
+      });
+    } else if (fs.existsSync(shPath)) {
+      await new Promise((resolve, reject) => {
+        const proc = spawn('bash', ['install.sh'], { cwd: destDir });
+        proc.on('close', code => {
+          if (code === 0) resolve();
+          else reject(new Error(`install.sh terminó con código ${code}`));
+        });
+        proc.on('error', reject);
+      });
+    }
+
+    // 6. Refrescar lista de servidores
+    refreshServers();
+
+    installs[installId].status = 'done';
+  } catch (err) {
+    console.error('Error instalando server pack:', err);
+    installs[installId].status = 'error';
+    installs[installId].error = err.message;
+  }
+}
+
+// POST /api/install — inicia la instalación en background
+apiRouter.post('/install', (req, res) => {
+  const { modId, fileId, serverName } = req.body;
+  if (!modId || !fileId || !serverName) {
+    return res.status(400).json({ error: 'Faltan parámetros' });
+  }
+
+  const destDir = path.join(SERVER_ROOT, serverName);
+  if (fs.existsSync(destDir)) {
+    return res.status(409).json({ error: `Ya existe un servidor con el nombre "${serverName}"` });
+  }
+
+  const installId = crypto.randomUUID();
+  installs[installId] = { status: 'installing', error: null, serverName };
+
+  runInstall(installId, modId, fileId, destDir); // sin await → background
+
+  res.json({ installId });
+});
+
+// GET /api/install/:installId — estado de una instalación
+apiRouter.get('/install/:installId', (req, res) => {
+  const entry = installs[req.params.installId];
+  if (!entry) return res.status(404).json({ error: 'Instalación no encontrada' });
+  res.json(entry);
 });
 
 app.use('/api', apiRouter);

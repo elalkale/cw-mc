@@ -1,7 +1,7 @@
 import React from 'react';
 import { useState, useEffect, useRef, memo, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Download, ExternalLink, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Download, ExternalLink, ChevronLeft, ChevronRight, Server } from 'lucide-react';
 import { API_BASE, fetchWithToken } from '../lib/api.js';
 import modpacksData from '../resources/modpacks_with_server.json';
 
@@ -49,7 +49,7 @@ function StatBadge({ label, value, darkMode }) {
 
 // ── Componente principal ──────────────────────────────────────────────────────
 
-export default function ModpackDetail({ darkMode }) {
+export default function ModpackDetail({ darkMode, onInstallStart, onInstallClear, installations = {} }) {
   const { modId } = useParams();
   const navigate = useNavigate();
 
@@ -92,6 +92,25 @@ export default function ModpackDetail({ darkMode }) {
   const [filesPage, setFilesPage] = useState(0);       // índice (0-based × 50)
   const [filesTotalCount, setFilesTotalCount] = useState(0);
   const [downloadingFile, setDownloadingFile] = useState(null); // fileId en curso
+
+  // Instalación — estado derivado del global (persiste en recarga)
+  const [showInstallModal, setShowInstallModal] = useState(false);
+  const [serverNameInput, setServerNameInput] = useState('');
+  const [installFileId, setInstallFileId] = useState(null);   // null = usar serverFileId por defecto
+  const [installFileLabel, setInstallFileLabel] = useState('');
+  const currentInstall = Object.entries(installations).find(([, info]) => info.modId === localPack?.modId);
+  const installStatus = currentInstall?.[1]?.status ?? 'idle';
+  const installError  = currentInstall?.[1]?.error ?? '';
+
+  // Al salir de la página, limpiar la instalación si ya está completada
+  const currentInstallRef = useRef(null);
+  useEffect(() => { currentInstallRef.current = currentInstall; }, [currentInstall]);
+  useEffect(() => {
+    return () => {
+      const install = currentInstallRef.current;
+      if (install?.[1]?.status === 'done') onInstallClear?.(install[0]);
+    };
+  }, []);
 
   // Pestaña activa
   const [tab, setTab] = useState('descripcion');
@@ -136,6 +155,38 @@ export default function ModpackDetail({ darkMode }) {
       .catch(console.error)
       .finally(() => setLoadingFiles(false));
   }, [modId, filesPage]);
+
+  const startInstall = async () => {
+    const name = serverNameInput.trim();
+    if (!name) return;
+    const fileId = installFileId ?? localPack.serverFileId;
+    setShowInstallModal(false);
+    try {
+      const res = await fetchWithToken(`${API_BASE}/api/install`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ modId: localPack.modId, fileId, serverName: name }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      onInstallStart?.(data.installId, {
+        modId: localPack.modId,
+        serverName: name,
+        modName: localPack.name,
+        logo: cfMod?.logo?.thumbnailUrl ?? null,
+      });
+    } catch (err) {
+      // Notifica el error al estado global para que persista
+      onInstallStart?.(`err-${Date.now()}`, {
+        modId: localPack.modId,
+        serverName: name,
+        modName: localPack.name,
+        logo: cfMod?.logo?.thumbnailUrl ?? null,
+        status: 'error',
+        error: err.message,
+      });
+    }
+  };
 
   // Cerrar lightbox con Escape
   useEffect(() => {
@@ -303,6 +354,41 @@ export default function ModpackDetail({ darkMode }) {
               {downloading ? 'Obteniendo enlace...' : 'Descargar Server Pack'}
             </button>
 
+            {/* Botón Instalar */}
+            {localPack.serverFileId && (
+              <button
+                onClick={() => {
+                  if (installStatus === 'idle' || installStatus === 'error') {
+                    setInstallFileId(null);
+                    const serverFile = files.find(f => (f.serverPackFileId ?? f.id) === localPack.serverFileId);
+                    setInstallFileLabel(serverFile?.displayName || serverFile?.fileName || 'Versión recomendada');
+                    setServerNameInput(localPack.slug);
+                    setShowInstallModal(true);
+                  }
+                }}
+                disabled={installStatus === 'installing'}
+                className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm border transition disabled:cursor-not-allowed ${
+                  installStatus === 'done'
+                    ? 'bg-green-600/20 border-green-500/40 text-green-400'
+                    : installStatus === 'error'
+                    ? 'bg-red-600/20 border-red-500/40 text-red-400 hover:bg-red-600/30'
+                    : installStatus === 'installing'
+                    ? darkMode ? 'bg-gray-700/50 border-gray-600 text-gray-400' : 'bg-gray-200 border-gray-300 text-gray-500'
+                    : darkMode ? 'border-purple-500/40 text-purple-300 hover:bg-purple-600/20' : 'border-purple-400 text-purple-700 hover:bg-purple-100'
+                }`}
+              >
+                {installStatus === 'installing' ? (
+                  <span className="w-4 h-4 rounded-full border-2 border-t-transparent border-current animate-spin" aria-hidden="true" />
+                ) : (
+                  <Server size={15} aria-hidden="true" />
+                )}
+                {installStatus === 'installing' ? 'Instalando...'
+                  : installStatus === 'done' ? '✓ Instalado'
+                  : installStatus === 'error' ? 'Error — reintentar'
+                  : 'Instalar servidor'}
+              </button>
+            )}
+
             <a
               href={`https://www.curseforge.com/minecraft/modpacks/${localPack.slug}`}
               target="_blank"
@@ -319,6 +405,9 @@ export default function ModpackDetail({ darkMode }) {
 
           {downloadError && (
             <p className="mt-2 text-sm text-red-400">{downloadError}</p>
+          )}
+          {installStatus === 'error' && installError && (
+            <p className="mt-2 text-sm text-red-400">{installError}</p>
           )}
         </div>
       </div>
@@ -445,18 +534,37 @@ export default function ModpackDetail({ darkMode }) {
                           {new Date(file.fileDate).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })}
                         </td>
                         <td className="py-2.5 text-right">
-                          <button
-                            onClick={() => downloadFile(file.serverPackFileId ?? file.id)}
-                            disabled={downloadingFile === (file.serverPackFileId ?? file.id)}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-purple-600/80 hover:bg-purple-600 text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
-                            aria-label={`Descargar ${file.displayName}`}
-                          >
-                            {downloadingFile === (file.serverPackFileId ?? file.id)
-                              ? <span className="w-3 h-3 rounded-full border-2 border-t-transparent border-white animate-spin" />
-                              : <Download size={13} aria-hidden="true" />
-                            }
-                            Server pack
-                          </button>
+                          <div className="inline-flex gap-2 justify-end">
+                            <button
+                              onClick={() => downloadFile(file.serverPackFileId ?? file.id)}
+                              disabled={downloadingFile === (file.serverPackFileId ?? file.id)}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-purple-600/80 hover:bg-purple-600 text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
+                              aria-label={`Descargar ${file.displayName}`}
+                            >
+                              {downloadingFile === (file.serverPackFileId ?? file.id)
+                                ? <span className="w-3 h-3 rounded-full border-2 border-t-transparent border-white animate-spin" />
+                                : <Download size={13} aria-hidden="true" />
+                              }
+                              Descargar
+                            </button>
+                            <button
+                              onClick={() => {
+                                setInstallFileId(file.serverPackFileId ?? file.id);
+                                setInstallFileLabel(file.displayName || file.fileName);
+                                setServerNameInput(localPack.slug);
+                                setShowInstallModal(true);
+                              }}
+                              disabled={installStatus === 'installing'}
+                              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition disabled:opacity-50 disabled:cursor-not-allowed ${darkMode
+                                ? 'border-purple-500/40 text-purple-300 hover:bg-purple-600/20'
+                                : 'border-purple-400 text-purple-700 hover:bg-purple-100'
+                              }`}
+                              aria-label={`Instalar ${file.displayName}`}
+                            >
+                              <Server size={13} aria-hidden="true" />
+                              Instalar
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -498,6 +606,53 @@ export default function ModpackDetail({ darkMode }) {
         )}
 
       </section>
+
+      {/* Modal de instalación */}
+      {showInstallModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60" onClick={() => setShowInstallModal(false)} />
+          <div className={`relative w-full max-w-md rounded-2xl border p-6 shadow-2xl ${darkMode ? 'bg-gray-900 border-purple-500/30' : 'bg-white border-purple-300/50'}`}>
+            <h2 className={`text-lg font-bold mb-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+              Instalar servidor
+            </h2>
+            {installFileLabel && (
+              <p className={`text-xs mb-3 px-3 py-2 rounded-lg border ${darkMode ? 'bg-gray-800 border-gray-700 text-gray-300' : 'bg-gray-100 border-gray-200 text-gray-700'}`}>
+                <span className={`font-medium ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Versión: </span>
+                {installFileLabel}
+              </p>
+            )}
+            <p className={`text-sm mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+              Se instalará en tu carpeta de servidores con este nombre:
+            </p>
+            <input
+              type="text"
+              value={serverNameInput}
+              onChange={e => setServerNameInput(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') startInstall(); }}
+              placeholder="nombre-del-servidor"
+              className={`w-full px-4 py-2.5 rounded-xl border text-sm mb-5 outline-none focus:ring-2 focus:ring-purple-500 ${darkMode
+                ? 'bg-gray-800 border-gray-600 text-white placeholder-gray-500'
+                : 'bg-gray-50 border-gray-300 text-gray-900 placeholder-gray-400'
+              }`}
+            />
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setShowInstallModal(false)}
+                className={`px-4 py-2 rounded-xl text-sm font-medium border transition ${darkMode ? 'border-gray-600 text-gray-300 hover:border-gray-400' : 'border-gray-300 text-gray-600 hover:border-gray-400'}`}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={startInstall}
+                disabled={!serverNameInput.trim()}
+                className="px-5 py-2 rounded-xl text-sm font-semibold bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Instalar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Lightbox de screenshots */}
       {lightbox && (
