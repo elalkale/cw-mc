@@ -40,8 +40,8 @@ export default function ServerDetailPage({ servers, startServer, stopServer, for
   }
 
   const panelBg = darkMode
-    ? 'bg-gradient-to-br from-gray-800 to-gray-900 border-purple-500/20'
-    : 'bg-white border-gray-200';
+    ? 'bg-gradient-to-br from-gray-800/90 via-purple-950/10 to-gray-900 border-purple-500/25'
+    : 'bg-gradient-to-br from-white to-purple-50/60 border-purple-200/70';
 
   return (
     <div className={`max-w-7xl mx-auto mt-2 md:mt-6 px-4 md:px-6 pb-8 transition-colors duration-300 space-y-4 ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
@@ -115,8 +115,8 @@ export default function ServerDetailPage({ servers, startServer, stopServer, for
               </div>
               <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
                 (data?.players?.online ?? 0) > 0
-                  ? 'bg-green-500/15 text-green-400'
-                  : darkMode ? 'bg-gray-700/60 text-gray-500' : 'bg-gray-100 text-gray-400'
+                  ? 'bg-green-500/20 text-green-400'
+                  : darkMode ? 'bg-gray-700/60 text-gray-500' : 'bg-purple-100 text-purple-500'
               }`}>
                 {data?.players?.online ?? 0}/{data?.players?.max ?? 0}
               </span>
@@ -129,8 +129,8 @@ export default function ServerDetailPage({ servers, startServer, stopServer, for
                   <div
                     key={p.id}
                     className={`flex items-center gap-3 p-2.5 rounded-xl border transition-colors ${darkMode
-                      ? 'bg-gray-700/30 border-gray-700/40 hover:border-purple-500/30'
-                      : 'bg-gray-50 border-gray-200 hover:border-purple-300'
+                      ? 'bg-purple-950/20 border-purple-700/30 hover:border-purple-500/50'
+                      : 'bg-purple-50/60 border-purple-200/60 hover:border-purple-300'
                     }`}
                   >
                     <img

@@ -78,11 +78,6 @@ export default function ServerDetail({ server, data, onStart, onStop, onForceSto
     } finally { setIsCreatingLocal(false); }
   };
 
-  // ── Tokens ──────────────────────────────────────────────────────────────────
-  const panelBg = darkMode
-    ? 'bg-gradient-to-br from-gray-800 to-gray-900 border-purple-500/20'
-    : 'bg-white border-gray-200';
-
   return (
     <div className="flex flex-col space-y-4">
 
@@ -97,8 +92,8 @@ export default function ServerDetail({ server, data, onStart, onStop, onForceSto
             />
           ) : (
             <div className={`w-full h-full ${darkMode
-              ? 'bg-gradient-to-br from-purple-900/60 via-gray-800 to-pink-900/40'
-              : 'bg-gradient-to-br from-purple-100 via-white to-pink-100'
+              ? 'bg-gradient-to-br from-purple-900/70 via-indigo-900/50 to-pink-900/60'
+              : 'bg-gradient-to-br from-purple-200/80 via-indigo-100 to-pink-200/80'
             }`} />
           )}
           <div className="absolute inset-0 bg-gradient-to-t from-gray-900/70 to-transparent" />
@@ -132,7 +127,7 @@ export default function ServerDetail({ server, data, onStart, onStop, onForceSto
           </div>
         </div>
 
-        <div className={`px-5 py-3.5 ${darkMode ? 'bg-gradient-to-br from-gray-800 to-gray-900' : 'bg-white'}`}>
+        <div className={`px-5 py-3.5 ${darkMode ? 'bg-gradient-to-br from-gray-800/95 via-purple-950/15 to-gray-900' : 'bg-gradient-to-br from-white to-purple-50/50'}`}>
           <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{server}</h2>
           <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Panel de control del servidor</p>
         </div>
@@ -140,11 +135,15 @@ export default function ServerDetail({ server, data, onStart, onStop, onForceSto
 
       {/* ── Stats ──────────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-3 gap-3">
-        <div className={`rounded-2xl p-4 border shadow-sm ${panelBg}`}>
-          <div className={`w-8 h-8 rounded-lg flex items-center justify-center mb-3 ${data.running ? 'bg-green-500/15' : 'bg-red-500/15'}`}>
+        {/* Stat: Estado */}
+        <div className={`rounded-2xl p-4 border shadow-sm ${darkMode
+          ? (data.running ? 'bg-gradient-to-br from-gray-800/90 to-green-950/30 border-green-500/20' : 'bg-gradient-to-br from-gray-800/90 to-red-950/20 border-red-500/20')
+          : (data.running ? 'bg-gradient-to-br from-white to-green-50 border-green-200/80' : 'bg-gradient-to-br from-white to-red-50 border-red-200/80')
+        }`}>
+          <div className={`w-8 h-8 rounded-lg flex items-center justify-center mb-3 ${data.running ? 'bg-green-500/20' : 'bg-red-500/20'}`}>
             <Activity size={16} className={data.running ? 'text-green-400' : 'text-red-400'} />
           </div>
-          <p className={`text-xs font-medium mb-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Estado</p>
+          <p className={`text-xs font-medium mb-1 ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>Estado</p>
           <p className={`text-sm font-bold ${data.running
             ? (darkMode ? 'text-green-400' : 'text-green-600')
             : (darkMode ? 'text-red-400' : 'text-red-600')
@@ -154,29 +153,37 @@ export default function ServerDetail({ server, data, onStart, onStop, onForceSto
           {data.pid && <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>PID {data.pid}</p>}
         </div>
 
-        <div className={`rounded-2xl p-4 border shadow-sm ${panelBg}`}>
-          <div className={`w-8 h-8 rounded-lg flex items-center justify-center mb-3 ${data.ping?.up ? 'bg-green-500/15' : 'bg-gray-500/15'}`}>
-            <Wifi size={16} className={data.ping?.up ? 'text-green-400' : (darkMode ? 'text-gray-500' : 'text-gray-400')} />
+        {/* Stat: Conexión */}
+        <div className={`rounded-2xl p-4 border shadow-sm ${darkMode
+          ? (data.ping?.up ? 'bg-gradient-to-br from-gray-800/90 to-blue-950/30 border-blue-500/20' : 'bg-gradient-to-br from-gray-800/90 via-purple-950/10 to-gray-900 border-purple-500/20')
+          : (data.ping?.up ? 'bg-gradient-to-br from-white to-blue-50 border-blue-200/80' : 'bg-gradient-to-br from-white to-purple-50/60 border-purple-200/70')
+        }`}>
+          <div className={`w-8 h-8 rounded-lg flex items-center justify-center mb-3 ${data.ping?.up ? 'bg-blue-500/20' : 'bg-gray-500/15'}`}>
+            <Wifi size={16} className={data.ping?.up ? 'text-blue-400' : (darkMode ? 'text-gray-500' : 'text-gray-400')} />
           </div>
-          <p className={`text-xs font-medium mb-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Conexión</p>
+          <p className={`text-xs font-medium mb-1 ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>Conexión</p>
           <p className={`text-sm font-bold ${data.ping?.up
-            ? (darkMode ? 'text-green-400' : 'text-green-600')
+            ? (darkMode ? 'text-blue-400' : 'text-blue-600')
             : (darkMode ? 'text-gray-500' : 'text-gray-500')
           }`}>
             {data.ping?.up ? 'Online' : 'Offline'}
           </p>
           {data.ping?.up && (
-            <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>
+            <p className={`text-xs mt-0.5 ${darkMode ? 'text-blue-600/80' : 'text-blue-400'}`}>
               {data.players?.online ?? 0}/{data.players?.max ?? 0} jugadores
             </p>
           )}
         </div>
 
-        <div className={`rounded-2xl p-4 border shadow-sm ${panelBg}`}>
-          <div className="w-8 h-8 rounded-lg bg-purple-500/15 flex items-center justify-center mb-3">
+        {/* Stat: Versión */}
+        <div className={`rounded-2xl p-4 border shadow-sm ${darkMode
+          ? 'bg-gradient-to-br from-gray-800/90 to-purple-950/30 border-purple-500/25'
+          : 'bg-gradient-to-br from-white to-purple-50 border-purple-200/80'
+        }`}>
+          <div className="w-8 h-8 rounded-lg bg-purple-500/20 flex items-center justify-center mb-3">
             <Tag size={16} className="text-purple-400" />
           </div>
-          <p className={`text-xs font-medium mb-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Versión</p>
+          <p className={`text-xs font-medium mb-1 ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>Versión</p>
           <p className={`text-sm font-bold ${darkMode ? 'text-purple-300' : 'text-purple-700'}`}>
             {data.version || 'N/A'}
           </p>

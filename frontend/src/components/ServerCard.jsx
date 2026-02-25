@@ -39,8 +39,8 @@ export default function ServerCard({ server, data, onStart, onStop, darkMode }) 
   };
 
   const cardBg = darkMode
-    ? "bg-gradient-to-br from-gray-800 to-gray-900 border-purple-500/20 hover:border-purple-400/50"
-    : "bg-gradient-to-br from-white to-gray-50 border-purple-400/40 hover:border-purple-500/60";
+    ? "bg-gradient-to-br from-gray-800/90 via-purple-950/10 to-gray-900 border-purple-500/30 hover:border-purple-400/60"
+    : "bg-gradient-to-br from-white to-purple-50/70 border-purple-300/60 hover:border-purple-400/80";
 
   return (
     <div
@@ -68,8 +68,8 @@ export default function ServerCard({ server, data, onStart, onStop, darkMode }) 
         ) : (
           <div className={`w-full h-full ${
             darkMode
-              ? "bg-gradient-to-br from-purple-900/50 via-gray-800 to-pink-900/40"
-              : "bg-gradient-to-br from-purple-100 via-white to-pink-100"
+              ? "bg-gradient-to-br from-purple-900/70 via-indigo-900/40 to-pink-900/60"
+              : "bg-gradient-to-br from-purple-200/80 via-indigo-100 to-pink-200/80"
           }`} />
         )}
         {/* Fade bottom */}
@@ -143,8 +143,8 @@ export default function ServerCard({ server, data, onStart, onStop, darkMode }) 
 
           {data.ping?.up && (
             <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded-lg border ${darkMode
-              ? "bg-purple-500/10 border-purple-500/20 text-purple-300"
-              : "bg-purple-50 border-purple-200 text-purple-700"
+              ? "bg-purple-500/15 border-purple-500/30 text-purple-300"
+              : "bg-purple-100 border-purple-300/70 text-purple-700"
             }`}>
               <Users size={11} aria-hidden="true" />
               <span className="text-xs font-semibold">
@@ -155,8 +155,8 @@ export default function ServerCard({ server, data, onStart, onStop, darkMode }) 
 
           {data.version && (
             <span className={`px-2 py-0.5 rounded-lg text-xs border ${darkMode
-              ? "bg-gray-700/50 text-gray-400 border-gray-600/50"
-              : "bg-gray-100 text-gray-500 border-gray-200"
+              ? "bg-indigo-500/10 text-indigo-300 border-indigo-500/20"
+              : "bg-indigo-50 text-indigo-600 border-indigo-200/80"
             }`}>
               {data.version}
             </span>
