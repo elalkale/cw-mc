@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from 'react';
+import { FolderOpen, Save, CheckCircle, AlertCircle } from 'lucide-react';
 import { API_BASE, fetchWithToken } from '../lib/api.js';
 
 export default function Settings({ darkMode }) {
   const [serverRoot, setServerRoot] = useState('');
-  const [message, setMessage] = useState('');
+  const [message, setMessage]       = useState('');
+  const [saving, setSaving]         = useState(false);
+  const isSuccess = message && !message.toLowerCase().startsWith('error');
 
   useEffect(() => {
     fetchWithToken(`${API_BASE}/api/settings`)
@@ -13,6 +16,8 @@ export default function Settings({ darkMode }) {
   }, []);
 
   const saveSettings = async () => {
+    setSaving(true);
+    setMessage('');
     try {
       const res = await fetchWithToken(`${API_BASE}/api/settings`, {
         method: 'POST',
@@ -22,43 +27,71 @@ export default function Settings({ darkMode }) {
       setMessage(res.ok ? 'Configuración guardada correctamente.' : `Error: ${data.error}`);
     } catch {
       setMessage('Error al guardar la configuración.');
+    } finally {
+      setSaving(false);
     }
   };
 
   return (
-    <div className="max-w-3xl mx-auto p-4 md:p-6 rounded-lg">
-      <h1 className="text-2xl font-bold mb-4">Configuración</h1>
-      <div className="space-y-4">
-        <div>
-          <label
-            htmlFor="server-root-input"
-            className="block mb-1 font-medium"
-          >
-            Directorio raíz de servidores
-          </label>
-          <input
-            id="server-root-input"
-            type="text"
-            value={serverRoot}
-            onChange={(e) => setServerRoot(e.target.value)}
-            className={`w-full px-3 py-2 rounded-lg border transition-colors ${darkMode
-              ? 'bg-gray-800 text-white border-gray-700'
-              : 'bg-white text-gray-900 border-gray-300'
-            }`}
-          />
+    <div className="space-y-4">
+      {/* Campo: directorio raíz */}
+      <div>
+        <label
+          htmlFor="server-root-input"
+          className={`flex items-center gap-1.5 text-xs font-medium mb-2 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}
+        >
+          <FolderOpen size={13} className={darkMode ? 'text-purple-400' : 'text-purple-500'} />
+          Directorio raíz de servidores
+        </label>
+        <input
+          id="server-root-input"
+          type="text"
+          value={serverRoot}
+          onChange={e => setServerRoot(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') saveSettings(); }}
+          disabled={saving}
+          placeholder="C:\servers"
+          className={`w-full px-3 py-2 rounded-xl text-sm border transition-colors focus:outline-none font-mono ${darkMode
+            ? 'bg-gray-950 border-gray-700 text-gray-200 placeholder-gray-600 focus:border-purple-500/60'
+            : 'bg-gray-50 border-gray-200 text-gray-800 placeholder-gray-400 focus:border-purple-400'
+          } disabled:opacity-50`}
+        />
+        <p className={`mt-1.5 text-xs ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>
+          Ruta absoluta donde se almacenan las carpetas de cada servidor.
+        </p>
+      </div>
+
+      {/* Mensaje feedback */}
+      {message && (
+        <div className={`flex items-start gap-2 px-3 py-2.5 rounded-xl text-xs border ${
+          isSuccess
+            ? darkMode
+              ? 'bg-green-500/10 border-green-500/20 text-green-400'
+              : 'bg-green-50 border-green-200 text-green-700'
+            : darkMode
+              ? 'bg-red-500/10 border-red-500/20 text-red-400'
+              : 'bg-red-50 border-red-200 text-red-700'
+        }`}>
+          {isSuccess
+            ? <CheckCircle size={13} className="shrink-0 mt-0.5" />
+            : <AlertCircle size={13} className="shrink-0 mt-0.5" />
+          }
+          {message}
         </div>
+      )}
+
+      {/* Botón guardar */}
+      <div className="flex justify-end">
         <button
           onClick={saveSettings}
-          className={`px-4 py-2 rounded-lg transition-colors ${darkMode
-            ? 'bg-purple-600 text-white hover:bg-purple-700'
-            : 'bg-purple-500 text-white hover:bg-purple-600'
-          }`}
+          disabled={saving}
+          className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-purple-600 hover:bg-purple-500 text-white transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
         >
-          Guardar
+          {saving
+            ? <><span className="w-3.5 h-3.5 rounded-full border-2 border-t-transparent border-white animate-spin" />Guardando...</>
+            : <><Save size={14} />Guardar</>
+          }
         </button>
-        {message && (
-          <p className={`mt-2 ${darkMode ? 'text-gray-400' : 'text-gray-700'}`}>{message}</p>
-        )}
       </div>
     </div>
   );

@@ -1,7 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { FaMoon, FaSignOutAlt } from "react-icons/fa";
-import { Menu, X, Home, LayoutDashboard, Settings as SettingsIcon, BookOpen } from "lucide-react";
+import { Moon, Sun, LogOut, Menu, X, Home, LayoutDashboard, Settings as SettingsIcon, BookOpen, Users } from "lucide-react";
 import Settings from "./Settings.jsx";
 
 export default function Navbar({ darkMode, toggleDarkMode, onLogout, logoutBtnRef }) {
@@ -24,12 +23,15 @@ export default function Navbar({ darkMode, toggleDarkMode, onLogout, logoutBtnRe
   }, [location]);
 
   const navLinkClass = (path) => {
-    const active = location.pathname === path;
-    return `px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${active
-      ? "bg-purple-600/80 text-white"
+    const active = location.pathname === path ||
+      (path !== '/' && location.pathname.startsWith(path));
+    return `inline-flex items-center px-3 py-1.5 rounded-xl text-sm font-medium transition-all ${active
+      ? darkMode
+        ? "bg-gradient-to-r from-purple-500/20 to-pink-500/10 text-purple-300 border border-purple-500/25 shadow-sm shadow-purple-900/20"
+        : "bg-gradient-to-r from-purple-100 to-pink-50 text-purple-700 border border-purple-200/80 shadow-sm shadow-purple-100"
       : darkMode
-        ? "text-gray-300 hover:text-purple-300 hover:bg-purple-500/20"
-        : "text-gray-600 hover:text-purple-600 hover:bg-purple-200/30"
+        ? "text-gray-400 hover:text-gray-200 hover:bg-white/6 border border-transparent"
+        : "text-gray-500 hover:text-gray-800 hover:bg-gray-100/80 border border-transparent"
       }`;
   };
 
@@ -48,98 +50,141 @@ export default function Navbar({ darkMode, toggleDarkMode, onLogout, logoutBtnRe
           {/* Logo */}
           <Link
             to="/"
-            className="flex items-center gap-2 text-sm md:text-lg font-bold
-            bg-gradient-to-r from-purple-400 to-pink-400
-            bg-clip-text text-transparent hover:opacity-80 transition flex-shrink-0"
+            className="flex items-center gap-2.5 flex-shrink-0 group"
             aria-label="Ir a inicio – Minecraft Panel"
           >
-            <img
-              src="/frontend/src/assets/icon.png"
-              alt=""
-              className="w-6 h-6 object-contain"
-              aria-hidden="true"
-            />
-            Cube Watcher
+            <div className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all group-hover:scale-105 group-hover:shadow-md ${darkMode ? "bg-purple-500/20 shadow-purple-900/30" : "bg-purple-100 shadow-purple-200/50"}`}>
+              <img
+                src="/frontend/src/assets/icon.png"
+                alt=""
+                className="w-4.5 h-4.5 object-contain"
+                aria-hidden="true"
+              />
+            </div>
+            <span className="text-sm font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent hidden sm:inline tracking-tight">
+              Cube Watcher
+            </span>
           </Link>
+
+          {/* Separador vertical */}
+          <div className={`hidden md:block w-px h-5 mx-1 ${darkMode ? "bg-white/10" : "bg-gray-200"}`} aria-hidden="true" />
 
           {/* ── Links de navegación en ESCRITORIO (ocultos en móvil) ── */}
           <nav
-            className="hidden md:flex items-center gap-1 flex-1"
+            className="hidden md:flex items-center gap-0.5 flex-1"
             aria-label="Páginas principales"
           >
             <Link to="/" className={navLinkClass("/")}>
-              <span className="inline-flex items-center gap-1.5"><Home size={15} aria-hidden="true" /> Inicio</span>
+              <Home size={14} className="mr-1.5" aria-hidden="true" /> Inicio
             </Link>
             <Link to="/dashboard" className={navLinkClass("/dashboard")}>
-              <span className="inline-flex items-center gap-1.5"><LayoutDashboard size={15} aria-hidden="true" /> Dashboard</span>
+              <LayoutDashboard size={14} className="mr-1.5" aria-hidden="true" /> Dashboard
             </Link>
             <Link to="/catalog" className={navLinkClass("/catalog")}>
-              <span className="inline-flex items-center gap-1.5"><BookOpen size={15} aria-hidden="true" /> Catálogo</span>
+              <BookOpen size={14} className="mr-1.5" aria-hidden="true" /> Catálogo
+            </Link>
+            <Link to="/about" className={navLinkClass("/about")}>
+              <Users size={14} className="mr-1.5" aria-hidden="true" /> Acerca de
             </Link>
           </nav>
 
           {/* ── Acciones ── */}
-          <div className="flex items-center gap-2">
-            <button
-              onClick={toggleDarkMode}
-              className={`p-1.5 rounded-full transition-colors duration-300 ${darkMode
-                ? "bg-purple-600 text-white"
-                : "bg-gray-200 text-gray-800"
+          <div className="flex items-center gap-1">
+
+            {/* Grupo de botones: dark mode + settings + logout */}
+            <div className={`flex items-center gap-0.5 px-1 py-1 rounded-xl border ${darkMode ? "bg-white/5 border-white/10" : "bg-gray-100/80 border-gray-200"}`}>
+              <button
+                onClick={toggleDarkMode}
+                className={`p-1.5 rounded-lg transition-all hover:scale-105 active:scale-95 ${darkMode
+                  ? "text-purple-300 hover:bg-purple-500/20"
+                  : "text-gray-500 hover:bg-white hover:text-purple-600 hover:shadow-sm"
                 }`}
-              aria-label={darkMode ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
-              aria-pressed={darkMode}
-            >
-              <FaMoon aria-hidden="true" />
-            </button>
+                aria-label={darkMode ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
+                aria-pressed={darkMode}
+              >
+                {darkMode ? <Sun size={16} aria-hidden="true" /> : <Moon size={16} aria-hidden="true" />}
+              </button>
 
-            <button
-              ref={logoutBtnRef}
-              onClick={onLogout}
-              className="p-1.5 rounded-full transition-colors duration-300 bg-red-600 hover:bg-red-700 text-white"
-              aria-label="Cerrar sesión"
-            >
-              <FaSignOutAlt aria-hidden="true" />
-            </button>
+              <div className={`w-px h-4 ${darkMode ? "bg-white/10" : "bg-gray-300"}`} aria-hidden="true" />
 
-            {/* Botón de configuración */}
-            <button
-              onClick={() => setIsSettingsOpen(true)}
-              className="p-1.5 rounded-full transition-colors duration-300 bg-blue-600 hover:bg-blue-700 text-white"
-              aria-label="Abrir configuración"
-            >
-              <SettingsIcon size={20} aria-hidden="true" />
-            </button>
+              <button
+                onClick={() => setIsSettingsOpen(true)}
+                className={`p-1.5 rounded-lg transition-all hover:scale-105 active:scale-95 ${darkMode
+                  ? "text-gray-400 hover:bg-white/8 hover:text-gray-200"
+                  : "text-gray-500 hover:bg-white hover:text-gray-800 hover:shadow-sm"
+                }`}
+                aria-label="Abrir configuración"
+              >
+                <SettingsIcon size={16} aria-hidden="true" />
+              </button>
+
+              <div className={`w-px h-4 ${darkMode ? "bg-white/10" : "bg-gray-300"}`} aria-hidden="true" />
+
+              <button
+                ref={logoutBtnRef}
+                onClick={onLogout}
+                className={`p-1.5 rounded-lg transition-all hover:scale-105 active:scale-95 ${darkMode
+                  ? "text-red-400 hover:bg-red-500/15 hover:text-red-300"
+                  : "text-red-400 hover:bg-red-50 hover:text-red-600 hover:shadow-sm"
+                }`}
+                aria-label="Cerrar sesión"
+              >
+                <LogOut size={16} aria-hidden="true" />
+              </button>
+            </div>
 
             {/* Modal de configuración */}
             {isSettingsOpen && (
-              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" role="dialog" aria-modal="true" aria-labelledby="settings-title">
-                <div className="bg-gradient-to-br from-gray-800 to-gray-900 text-white rounded-2xl shadow-lg p-6 w-full max-w-md relative border border-purple-500/20">
-                  <button
-                    className="absolute top-2 right-2 p-2 rounded-full bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600"
-                    aria-label="Cerrar configuración"
-                    onClick={() => setIsSettingsOpen(false)}
+              <>
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50" onClick={() => setIsSettingsOpen(false)} />
+                <div className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none px-4">
+                  <div
+                    className={`w-full max-w-md rounded-2xl shadow-2xl border pointer-events-auto ${darkMode
+                      ? "bg-gradient-to-br from-gray-800 to-gray-900 border-purple-500/25"
+                      : "bg-white border-gray-200"
+                    }`}
+                    onClick={e => e.stopPropagation()}
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby="settings-title"
                   >
-                    <X size={20} aria-hidden="true" />
-                  </button>
-                  <Settings darkMode={darkMode}/>
+                    <div className={`flex items-center justify-between px-5 py-4 border-b ${darkMode ? "border-gray-700/60" : "border-gray-200"}`}>
+                      <div className="flex items-center gap-2">
+                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${darkMode ? "bg-purple-500/15" : "bg-purple-100"}`}>
+                          <SettingsIcon size={14} className="text-purple-400" />
+                        </div>
+                        <h3 id="settings-title" className={`font-semibold text-sm ${darkMode ? "text-white" : "text-gray-900"}`}>
+                          Configuración
+                        </h3>
+                      </div>
+                      <button
+                        onClick={() => setIsSettingsOpen(false)}
+                        className={`p-1.5 rounded-lg transition-colors ${darkMode ? "hover:bg-gray-700 text-gray-400" : "hover:bg-gray-100 text-gray-500"}`}
+                        aria-label="Cerrar configuración"
+                      >
+                        <X size={15} />
+                      </button>
+                    </div>
+                    <div className="px-5 py-4">
+                      <Settings darkMode={darkMode} />
+                    </div>
+                  </div>
                 </div>
-              </div>
+              </>
             )}
 
             {/* Hamburger — solo visible en MÓVIL */}
             <button
               onClick={() => setIsOpen(!isOpen)}
-              className={`p-1.5 rounded-full md:hidden transition-colors duration-300 ${darkMode
-                ? "bg-purple-600 text-white hover:bg-purple-700"
-                : "bg-gray-200 text-gray-800 hover:bg-gray-300"
-                }`}
+              className={`p-2 rounded-xl md:hidden transition-all hover:scale-105 active:scale-95 ${darkMode
+                ? "text-gray-400 hover:bg-white/8 hover:text-gray-200"
+                : "text-gray-500 hover:bg-gray-100 hover:text-gray-800"
+              }`}
               aria-label={isOpen ? "Cerrar menú de navegación" : "Abrir menú de navegación"}
               aria-expanded={isOpen}
               aria-controls="sidebar-menu"
             >
-              {isOpen
-                ? <X size={20} aria-hidden="true" />
-                : <Menu size={20} aria-hidden="true" />}
+              {isOpen ? <X size={18} aria-hidden="true" /> : <Menu size={18} aria-hidden="true" />}
             </button>
           </div>
         </div>
@@ -190,6 +235,16 @@ export default function Navbar({ darkMode, toggleDarkMode, onLogout, logoutBtnRe
               tabIndex={isOpen ? 0 : -1}
             >
               <span className="inline-flex items-center gap-2"><BookOpen size={16} aria-hidden="true" /> Catálogo</span>
+            </Link>
+            <Link
+              to="/about"
+              className={`px-4 py-2 rounded-lg transition ${darkMode
+                ? "text-gray-300 hover:text-purple-300 hover:bg-purple-500/20"
+                : "text-gray-600 hover:text-purple-600 hover:bg-purple-200/30"
+                }`}
+              tabIndex={isOpen ? 0 : -1}
+            >
+              <span className="inline-flex items-center gap-2"><Users size={16} aria-hidden="true" /> Acerca de</span>
             </Link>
           </nav>
         </div>

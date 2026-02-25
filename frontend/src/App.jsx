@@ -8,6 +8,7 @@ import Dashboard from "./pages/Dashboard.jsx";
 import ServerDetailPage from "./pages/ServerDetailPage.jsx";
 import ServerCatalog from "./pages/ServerCatalog.jsx";
 import ModpackDetail from "./pages/ModpackDetail.jsx";
+import About from "./pages/About.jsx";
 import Navbar from "./components/Navbar.jsx";
 
 // ─────────────────────────────────────────────────────────────
@@ -297,6 +298,7 @@ export default function App() {
               />
               <Route path="catalog" element={<ServerCatalog darkMode={darkMode} />} />
               <Route path="catalog/:modId" element={<ModpackDetail darkMode={darkMode} onInstallStart={addInstall} onInstallClear={clearInstall} installations={installations} />} />
+              <Route path="about" element={<About darkMode={darkMode} />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </main>
