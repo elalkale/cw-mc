@@ -2,7 +2,7 @@ import React from 'react';
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, Download, Star } from 'lucide-react';
+import { Search, Download, Star, ChevronDown, Tag, Layers, LayoutGrid, ArrowUpDown } from 'lucide-react';
 import { API_BASE, fetchWithToken } from '../lib/api.js';
 import modpacksData from '../resources/modpacks_with_server.json';
 import categoriesData from '../resources/categories.json';
@@ -35,6 +35,95 @@ const ALL_CATEGORIES = [...usedCategoryIds]
   .sort((a, b) => a.name.localeCompare(b.name));
 
 const PAGE_SIZE = 24;
+
+// ── Opciones de filtro ────────────────────────────────────────────────────────
+
+const VERSION_OPTIONS = [
+  { value: '', label: 'Todas las versiones' },
+  ...ALL_VERSIONS.map(v => ({ value: v, label: v })),
+];
+const LOADER_OPTIONS = [
+  { value: '', label: 'Todos los loaders' },
+  ...Object.entries(LOADER_NAMES).map(([id, name]) => ({ value: id, label: name })),
+];
+const CATEGORY_OPTIONS = [
+  { value: '', label: 'Todas las categorías' },
+  ...ALL_CATEGORIES.map(c => ({ value: String(c.id), label: c.name })),
+];
+const SORT_OPTIONS = [
+  { value: 'downloads',  label: 'Más descargados' },
+  { value: 'popularity', label: 'Popularidad' },
+  { value: 'date',       label: 'Más recientes' },
+  { value: 'name',       label: 'Nombre A–Z' },
+];
+
+// ── Dropdown personalizado ────────────────────────────────────────────────────
+
+function FilterSelect({ value, onChange, options, placeholder, icon: Icon, darkMode }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const selected = options.find(o => String(o.value) === String(value));
+  const isDefault = !value;
+
+  // Tokens de color
+  const triggerBase = `flex items-center gap-2 px-3 py-2 rounded-xl border text-sm transition-all duration-150 whitespace-nowrap select-none`;
+  const triggerBg   = darkMode ? 'bg-gray-800/80 hover:bg-gray-800' : 'bg-white hover:bg-gray-50';
+  const triggerBorderClosed = darkMode ? 'border-gray-700/80' : 'border-gray-200';
+  const triggerBorderOpen   = darkMode ? 'border-purple-500/50 ring-1 ring-purple-500/20' : 'border-purple-400 ring-1 ring-purple-300/30';
+  const labelColor  = isDefault ? (darkMode ? 'text-gray-500' : 'text-gray-400') : (darkMode ? 'text-gray-200' : 'text-gray-800');
+  const iconColor   = isDefault ? (darkMode ? 'text-gray-600' : 'text-gray-400') : 'text-purple-400';
+  const chevronColor = darkMode ? 'text-gray-600' : 'text-gray-400';
+
+  const panelBg  = darkMode ? 'bg-gray-800 border-gray-700/60 shadow-2xl shadow-black/50' : 'bg-white border-gray-200 shadow-xl shadow-gray-200/80';
+  const optActive = darkMode ? 'bg-purple-600/20 text-purple-300 font-medium' : 'bg-purple-50 text-purple-700 font-medium';
+  const optHover  = darkMode ? 'hover:bg-gray-700/60 text-gray-300 hover:text-white' : 'hover:bg-gray-50 text-gray-700';
+  const optReset  = darkMode ? 'text-gray-500 hover:bg-gray-700/40 hover:text-gray-400' : 'text-gray-400 hover:bg-gray-50 hover:text-gray-500';
+
+  return (
+    <div ref={ref} className="relative" onKeyDown={(e) => e.key === 'Escape' && setOpen(false)}>
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        className={`${triggerBase} ${triggerBg} ${open ? triggerBorderOpen : triggerBorderClosed} ${labelColor}`}
+      >
+        {Icon && <Icon size={14} className={`shrink-0 transition-colors ${iconColor}`} />}
+        <span className="truncate max-w-[130px]">{selected?.label ?? placeholder}</span>
+        <ChevronDown
+          size={13}
+          className={`shrink-0 ml-0.5 transition-transform duration-200 ${open ? 'rotate-180' : ''} ${chevronColor}`}
+        />
+      </button>
+
+      {open && (
+        <div className={`absolute top-full mt-2 z-50 min-w-full w-max max-w-[240px] max-h-64 overflow-y-auto rounded-xl border ${panelBg} custom-scrollbar`}>
+          <div className="py-1">
+            {options.map(opt => (
+              <button
+                key={String(opt.value)}
+                type="button"
+                onClick={() => { onChange(opt.value); setOpen(false); }}
+                className={`w-full text-left px-3 py-2 text-sm transition-colors duration-100 ${
+                  String(opt.value) === String(value)
+                    ? optActive
+                    : opt.value === '' ? optReset : optHover
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ── Tarjeta individual ────────────────────────────────────────────────────────
 
@@ -229,10 +318,6 @@ export default function ServerCatalog({ darkMode }) {
   // ── Clases compartidas ──────────────────────────────────────────────────────
 
   const containerClass = darkMode ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-900';
-  const selectClass = `px-3 py-2 rounded-lg border text-sm transition focus:outline-none focus:ring-1 focus:ring-purple-500 ${darkMode
-    ? 'bg-gray-800 border-gray-700 text-white'
-    : 'bg-white border-gray-300 text-gray-900'
-  }`;
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
@@ -250,43 +335,55 @@ export default function ServerCatalog({ darkMode }) {
       </div>
 
       {/* Filtros */}
-      <div className="flex flex-col sm:flex-row flex-wrap gap-3 mb-6">
+      <div className="flex flex-col sm:flex-row flex-wrap gap-2.5 mb-6">
         {/* Búsqueda */}
         <div className="relative flex-1 min-w-[200px]">
-          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" aria-hidden="true" />
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" aria-hidden="true" />
           <input
             type="text"
             placeholder="Buscar modpack..."
             value={search}
             onChange={e => setSearch(e.target.value)}
-            className={`${selectClass} w-full pl-9`}
+            className={`w-full pl-9 pr-3 py-2 rounded-xl border text-sm transition-all focus:outline-none ${darkMode
+              ? 'bg-gray-800/80 border-gray-700/80 text-gray-200 placeholder-gray-500 focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/20'
+              : 'bg-white border-gray-200 text-gray-900 placeholder-gray-400 focus:border-purple-400 focus:ring-1 focus:ring-purple-300/30'
+            }`}
             aria-label="Buscar modpack por nombre"
           />
         </div>
 
-        <select value={selectedVersion} onChange={e => setSelectedVersion(e.target.value)} className={selectClass} aria-label="Filtrar por versión">
-          <option value="">Todas las versiones</option>
-          {ALL_VERSIONS.map(v => <option key={v} value={v}>{v}</option>)}
-        </select>
-
-        <select value={selectedLoader} onChange={e => setSelectedLoader(e.target.value)} className={selectClass} aria-label="Filtrar por mod loader">
-          <option value="">Todos los loaders</option>
-          {Object.entries(LOADER_NAMES).map(([id, name]) => (
-            <option key={id} value={id}>{name}</option>
-          ))}
-        </select>
-
-        <select value={selectedCategory} onChange={e => setSelectedCategory(e.target.value)} className={selectClass} aria-label="Filtrar por categoría">
-          <option value="">Todas las categorías</option>
-          {ALL_CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
-
-        <select value={sortBy} onChange={e => setSortBy(e.target.value)} className={selectClass} aria-label="Ordenar por">
-          <option value="downloads">Más descargados</option>
-          <option value="popularity">Popularidad</option>
-          <option value="date">Más recientes</option>
-          <option value="name">Nombre A–Z</option>
-        </select>
+        <FilterSelect
+          value={selectedVersion}
+          onChange={setSelectedVersion}
+          options={VERSION_OPTIONS}
+          placeholder="Versión"
+          icon={Tag}
+          darkMode={darkMode}
+        />
+        <FilterSelect
+          value={selectedLoader}
+          onChange={setSelectedLoader}
+          options={LOADER_OPTIONS}
+          placeholder="Loader"
+          icon={Layers}
+          darkMode={darkMode}
+        />
+        <FilterSelect
+          value={selectedCategory}
+          onChange={setSelectedCategory}
+          options={CATEGORY_OPTIONS}
+          placeholder="Categoría"
+          icon={LayoutGrid}
+          darkMode={darkMode}
+        />
+        <FilterSelect
+          value={sortBy}
+          onChange={setSortBy}
+          options={SORT_OPTIONS}
+          placeholder="Ordenar"
+          icon={ArrowUpDown}
+          darkMode={darkMode}
+        />
       </div>
 
       {/* Grid */}

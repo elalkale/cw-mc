@@ -117,6 +117,18 @@ function getServerVersion(dir) {
   return 'Desconocida';
 }
 
+function getServerPort(dir) {
+  try {
+    const propsPath = path.join(dir, 'server.properties');
+    if (fs.existsSync(propsPath)) {
+      const content = fs.readFileSync(propsPath, 'utf-8');
+      const match = content.match(/^server-port\s*=\s*(\d+)/m);
+      if (match) return parseInt(match[1], 10);
+    }
+  } catch { /* ignore */ }
+  return 25565;
+}
+
 function refreshServers() {
   // Crear el directorio si no existe todavía
   if (!fs.existsSync(SERVER_ROOT)) {
@@ -137,7 +149,7 @@ function refreshServers() {
           dir,
           startCmd: 'start.bat',
           host: 'localhost',
-          port: 25565 + Object.keys(servers).length,
+          port: getServerPort(dir),
           version: getServerVersion(dir),
         },
         process: null,
@@ -213,7 +225,11 @@ apiRouter.get('/status', async (req, res) => {
 
   for (const [name, state] of Object.entries(servers)) {
     const running = state.process && !state.process.killed;
-    const ping = await checkMinecraft(state.cfg).catch(() => ({ up: false, players: { online: 0, max: 0, sample: [] } }));
+    // Solo hacer ping si el proceso está activo — evita falsos positivos cuando
+    // varios servidores comparten el puerto por defecto 25565
+    const ping = running
+      ? await checkMinecraft(state.cfg).catch(() => ({ up: false, players: { online: 0, max: 0, sample: [] } }))
+      : { up: false, players: { online: 0, max: 0, sample: [] } };
     const iconPath = path.join(state.cfg.dir, 'server-icon.png');
 
     result[name] = {
@@ -279,6 +295,23 @@ apiRouter.post('/stop', (req, res) => {
       state.process.stdin.write('stop\n');
       return res.json({ ok: true, method: 'stdin' });
     }
+    // Sin stdin disponible → forzar kill directamente
+    const killer = spawn('taskkill', ['/PID', String(state.process.pid), '/T', '/F']);
+    killer.on('close', () => res.json({ ok: true, method: 'taskkill' }));
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// Force-stop: mata el proceso inmediatamente sin esperar al guardado
+apiRouter.post('/force-stop', (req, res) => {
+  refreshServers();
+  const { name } = req.body;
+  const state = servers[name];
+  if (!state) return res.status(404).json({ error: 'Servidor no encontrado' });
+  if (!state.process || state.process.killed) return res.status(400).json({ error: 'No en ejecución' });
+
+  try {
     const killer = spawn('taskkill', ['/PID', String(state.process.pid), '/T', '/F']);
     killer.on('close', () => res.json({ ok: true, method: 'taskkill' }));
   } catch (err) {

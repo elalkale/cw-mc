@@ -175,6 +175,14 @@ export default function App() {
     setTimeout(fetchStatus, 1000);
   };
 
+  const forceStopServer = async (name) => {
+    await fetchWithToken(`${API_BASE}/api/force-stop`, {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    });
+    setTimeout(fetchStatus, 1000);
+  };
+
   const sendCommand = async (name, command) => {
     try {
       await fetchWithToken(`${API_BASE}/api/command`, {
@@ -281,6 +289,7 @@ export default function App() {
                     servers={servers}
                     startServer={startServer}
                     stopServer={stopServer}
+                    forceStopServer={forceStopServer}
                     sendCommand={sendCommand}
                     darkMode={darkMode}
                   />

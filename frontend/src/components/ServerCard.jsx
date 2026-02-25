@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { io } from "socket.io-client";
-import { Maximize2, Minimize2 } from "lucide-react";
+import { Maximize2, Minimize2, Play, Square, Users, Terminal, Send } from "lucide-react";
 import { API_BASE } from "../lib/api.js";
 
 export default function ServerCard({ server, data, onStart, onStop, darkMode }) {
@@ -18,14 +18,12 @@ export default function ServerCard({ server, data, onStart, onStop, darkMode }) 
   useEffect(() => {
     socket.current = io(API_BASE, { auth: { token: localStorage.getItem('authToken') } });
     socket.current.emit("join", server);
-
     socket.current.on("log", ({ server: srv, line }) => {
       if (srv === server) setLogs(prev => prev + line);
     });
     socket.current.on("log_history", ({ server: srv, logs }) => {
       if (srv === server) setLogs(logs || "");
     });
-
     return () => socket.current.disconnect();
   }, [server]);
 
@@ -40,12 +38,13 @@ export default function ServerCard({ server, data, onStart, onStop, darkMode }) 
     }
   };
 
+  const cardBg = darkMode
+    ? "bg-gradient-to-br from-gray-800 to-gray-900 border-purple-500/20 hover:border-purple-400/50"
+    : "bg-gradient-to-br from-white to-gray-50 border-purple-400/40 hover:border-purple-500/60";
+
   return (
     <div
-      className={`p-5 rounded-2xl shadow-lg border transition-all cursor-pointer overflow-hidden hover:shadow-2xl ${darkMode
-        ? "bg-gradient-to-br from-gray-800 to-gray-900 border-purple-500/20 hover:border-purple-500/40"
-        : "bg-gradient-to-br from-gray-100 to-gray-200 border-purple-400/50 hover:border-purple-500/70"
-      } ${expanded ? "col-span-full" : ""}`}
+      className={`rounded-2xl border cursor-pointer transition-all flex flex-col shadow-lg hover:shadow-2xl hover:-translate-y-0.5 ${cardBg} ${expanded ? "col-span-full" : ""}`}
       onClick={() => navigate(`/dashboard/${encodeURIComponent(server)}`)}
       role="article"
       aria-label={`Servidor ${server} – ${data.running ? "activo" : "detenido"}`}
@@ -57,162 +56,202 @@ export default function ServerCard({ server, data, onStart, onStop, darkMode }) 
         }
       }}
     >
-      {/* Badge estado */}
-      <div className="absolute top-4 right-4 z-10" aria-hidden="true">
-        <div className={`px-3 py-1 rounded-full text-xs font-semibold ${data.running
-          ? "bg-green-500/20 text-green-600 border border-green-500/50 dark:text-green-300"
-          : "bg-red-500/20 text-red-600 border border-red-500/50 dark:text-red-300"
-        }`}>
-          {data.running ? "● Activo" : "● Detenido"}
-        </div>
-      </div>
+      {/* ── Banner ── */}
+      <div className="h-[72px] relative overflow-hidden rounded-t-2xl flex-shrink-0">
+        {data.icon ? (
+          <img
+            src={`${API_BASE}/api/server-icon/${encodeURIComponent(server)}`}
+            alt=""
+            className="w-full h-full object-cover"
+            onError={(e) => { e.target.style.display = 'none'; }}
+          />
+        ) : (
+          <div className={`w-full h-full ${
+            darkMode
+              ? "bg-gradient-to-br from-purple-900/50 via-gray-800 to-pink-900/40"
+              : "bg-gradient-to-br from-purple-100 via-white to-pink-100"
+          }`} />
+        )}
+        {/* Fade bottom */}
+        <div className="absolute inset-0 bg-gradient-to-t from-gray-900/60 to-transparent" />
 
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-        <div className="flex items-center gap-2 md:gap-3 min-w-0">
+        {/* Icono — dentro del banner, abajo-izquierda */}
+        <div className="absolute bottom-2.5 left-3">
           {data.icon ? (
             <img
               src={`${API_BASE}/api/server-icon/${encodeURIComponent(server)}`}
               alt={`Icono del servidor ${server}`}
               onError={(e) => { e.target.style.display = 'none'; }}
-              className="w-12 h-12 md:w-14 md:h-14 rounded-xl object-cover flex-shrink-0 border-2 border-purple-500/30 shadow-lg"
+              className="w-9 h-9 rounded-lg object-cover border border-white/20 shadow-md"
             />
           ) : (
             <div
-              className="w-12 h-12 md:w-14 md:h-14 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white flex-shrink-0 text-xl shadow-lg"
+              className="w-9 h-9 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-base shadow-md border border-white/10"
               aria-hidden="true"
             >
               🎮
             </div>
           )}
-          <h3 className={`text-base md:text-xl font-bold bg-clip-text text-transparent truncate ${darkMode
-            ? "bg-gradient-to-r from-purple-300 to-pink-300"
-            : "bg-gradient-to-r from-purple-700 to-pink-700"
-          }`}>
-            {server}
-          </h3>
         </div>
 
-        <button
-          onClick={(e) => { e.stopPropagation(); setExpanded(v => !v); }}
-          className={`p-2 rounded-md transition-colors ${darkMode ? "hover:bg-gray-700" : "hover:bg-gray-200"}`}
-          aria-label={expanded ? `Contraer tarjeta del servidor ${server}` : `Expandir tarjeta del servidor ${server}`}
-          aria-expanded={expanded}
-          aria-controls={`card-details-${server.replace(/\s+/g, '-')}`}
-        >
-          {expanded
-            ? <Minimize2 size={18} aria-hidden="true" />
-            : <Maximize2 size={18} aria-hidden="true" />}
-        </button>
+        {/* Status badge */}
+        <div className="absolute top-2.5 right-2.5" aria-hidden="true">
+          <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold backdrop-blur-sm border ${
+            data.running
+              ? "bg-green-500/20 border-green-400/40 text-green-300"
+              : "bg-gray-700/70 border-gray-500/40 text-gray-400"
+          }`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${data.running ? "bg-green-400 animate-pulse" : "bg-gray-500"}`} />
+            {data.running ? "Activo" : "Detenido"}
+          </div>
+        </div>
       </div>
 
-      {/* Info */}
-      <div className="space-y-3 text-sm md:text-base">
-        <div className="flex items-center gap-2">
-          <div
-            className={`w-3 h-3 rounded-full ${data.ping?.up ? "bg-green-500 animate-pulse" : "bg-red-500"}`}
-            aria-hidden="true"
-          />
-          <span className={darkMode ? "text-gray-300" : "text-gray-700"}>
-            {data.ping?.up ? "Conectado" : "Desconectado"}
-          </span>
+      {/* ── Content ── */}
+      <div className="px-4 pb-4 pt-3 flex flex-col flex-1 gap-3">
+
+        {/* Name row */}
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <h3 className={`font-bold text-base leading-tight truncate ${darkMode ? "text-white" : "text-gray-900"}`}>
+              {server}
+            </h3>
+          </div>
+
+          <button
+            onClick={(e) => { e.stopPropagation(); setExpanded(v => !v); }}
+            className={`shrink-0 mt-1 p-1.5 rounded-lg transition-colors ${darkMode ? "hover:bg-gray-700 text-gray-500 hover:text-gray-300" : "hover:bg-gray-100 text-gray-400 hover:text-gray-700"}`}
+            aria-label={expanded ? `Contraer tarjeta del servidor ${server}` : `Expandir tarjeta del servidor ${server}`}
+            aria-expanded={expanded}
+            aria-controls={`card-details-${server.replace(/\s+/g, '-')}`}
+          >
+            {expanded ? <Minimize2 size={15} aria-hidden="true" /> : <Maximize2 size={15} aria-hidden="true" />}
+          </button>
         </div>
 
-        {data.ping?.up && (
-          <div className={`flex items-center justify-between py-2 px-3 rounded-lg border ${darkMode
-            ? "bg-gray-700/30 border-purple-500/20"
-            : "bg-purple-200/30 border-purple-400/50"
-          }`}>
-            <span className={darkMode ? "text-gray-400" : "text-gray-700"}>Jugadores</span>
-            <span className={`font-semibold ${darkMode ? "text-purple-300" : "text-purple-700"}`}>
-              {data.players?.online ?? 0}/{data.players?.max ?? 20}
+        {/* Stats row */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1.5">
+            <div
+              className={`w-2 h-2 rounded-full ${data.ping?.up ? "bg-green-400 animate-pulse" : "bg-gray-500"}`}
+              aria-hidden="true"
+            />
+            <span className={`text-xs ${darkMode ? "text-gray-400" : "text-gray-500"}`}>
+              {data.ping?.up ? "Online" : "Offline"}
             </span>
           </div>
-        )}
 
-        <p className={`text-xs ${darkMode ? "text-gray-400" : "text-gray-700"}`}>
-          Versión:{" "}
-          <span className={`font-semibold ${darkMode ? "text-purple-300" : "text-purple-700"}`}>
-            {data.version || "N/A"}
-          </span>
-        </p>
-      </div>
+          {data.ping?.up && (
+            <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded-lg border ${darkMode
+              ? "bg-purple-500/10 border-purple-500/20 text-purple-300"
+              : "bg-purple-50 border-purple-200 text-purple-700"
+            }`}>
+              <Users size={11} aria-hidden="true" />
+              <span className="text-xs font-semibold">
+                {data.players?.online ?? 0}/{data.players?.max ?? 20}
+              </span>
+            </div>
+          )}
 
-      {/* Expandible */}
-      {expanded && (
-        <div id={`card-details-${server.replace(/\s+/g, '-')}`} className="mt-4 space-y-4">
-          <div className="flex flex-col sm:flex-row gap-2 mt-3">
-            <button
-              onClick={(e) => { e.stopPropagation(); onStart(server); }}
-              disabled={data.running}
-              className={`flex-1 py-2 text-sm md:text-base rounded-lg font-medium text-white transition-colors ${data.running
-                ? darkMode ? "bg-gray-600 cursor-not-allowed" : "bg-gray-300 cursor-not-allowed"
-                : "bg-purple-600 hover:bg-purple-700"
-              }`}
-              aria-label={`Iniciar servidor ${server}`}
-              aria-disabled={data.running}
-            >
-              Start
-            </button>
-            <button
-              onClick={(e) => { e.stopPropagation(); onStop(server); }}
-              disabled={!data.running}
-              className={`flex-1 py-2 text-sm md:text-base rounded-lg font-medium text-white transition-colors ${!data.running
-                ? darkMode ? "bg-gray-600 cursor-not-allowed" : "bg-gray-300 cursor-not-allowed"
-                : "bg-red-600 hover:bg-red-700"
-              }`}
-              aria-label={`Detener servidor ${server}`}
-              aria-disabled={!data.running}
-            >
-              Stop
-            </button>
-          </div>
-
-          <div>
-            <p id={`logs-label-${server.replace(/\s+/g, '-')}`} className="text-sm md:text-base font-medium mb-2">
-              Logs:
-            </p>
-            <pre
-              ref={preRef}
-              id={logsId}
-              aria-labelledby={`logs-label-${server.replace(/\s+/g, '-')}`}
-              aria-live="polite"
-              aria-atomic="false"
-              className={`p-2 rounded-md h-32 sm:h-40 md:h-48 overflow-y-auto text-xs ${darkMode
-                ? "bg-gray-900 text-gray-300"
-                : "bg-gray-50 text-gray-800"
-              }`}
-            >
-              {logs || "Sin logs aún..."}
-            </pre>
-          </div>
-
-          <div className="flex flex-col sm:flex-row gap-2">
-            <label htmlFor={cmdInputId} className="sr-only">
-              Comando para el servidor {server}
-            </label>
-            <input
-              id={cmdInputId}
-              type="text"
-              value={command}
-              onChange={(e) => setCommand(e.target.value)}
-              onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Enter') sendCommand(); }}
-              placeholder="Escribe un comando..."
-              className={`flex-1 px-3 py-2 text-sm rounded-lg border transition-colors ${darkMode
-                ? "border-gray-700 bg-gray-700 text-white placeholder-gray-400"
-                : "border-gray-400 bg-white text-gray-900 placeholder-gray-700"
-              }`}
-            />
-            <button
-              onClick={(e) => { e.stopPropagation(); sendCommand(); }}
-              className="px-3 md:px-4 py-2 text-sm bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition"
-              aria-label={`Enviar comando al servidor ${server}`}
-            >
-              Enviar
-            </button>
-          </div>
+          {data.version && (
+            <span className={`px-2 py-0.5 rounded-lg text-xs border ${darkMode
+              ? "bg-gray-700/50 text-gray-400 border-gray-600/50"
+              : "bg-gray-100 text-gray-500 border-gray-200"
+            }`}>
+              {data.version}
+            </span>
+          )}
         </div>
-      )}
+
+        {/* ── Expanded ── */}
+        {expanded && (
+          <div
+            id={`card-details-${server.replace(/\s+/g, '-')}`}
+            className={`space-y-3 border-t pt-3 ${darkMode ? "border-gray-700/50" : "border-gray-200"}`}
+          >
+            {/* Start / Stop */}
+            <div className="flex gap-2">
+              <button
+                onClick={(e) => { e.stopPropagation(); onStart(server); }}
+                disabled={data.running}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-sm rounded-xl font-medium transition-all ${
+                  data.running
+                    ? darkMode
+                      ? "bg-gray-700/50 text-gray-500 cursor-not-allowed border border-gray-700/50"
+                      : "bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200"
+                    : "bg-green-600 hover:bg-green-500 text-white shadow-md shadow-green-900/30"
+                }`}
+                aria-label={`Iniciar servidor ${server}`}
+                aria-disabled={data.running}
+              >
+                <Play size={13} />
+                Iniciar
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); onStop(server); }}
+                disabled={!data.running}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-sm rounded-xl font-medium transition-all ${
+                  !data.running
+                    ? darkMode
+                      ? "bg-gray-700/50 text-gray-500 cursor-not-allowed border border-gray-700/50"
+                      : "bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200"
+                    : "bg-red-600 hover:bg-red-500 text-white shadow-md shadow-red-900/30"
+                }`}
+                aria-label={`Detener servidor ${server}`}
+                aria-disabled={!data.running}
+              >
+                <Square size={13} />
+                Detener
+              </button>
+            </div>
+
+            {/* Logs */}
+            <div>
+              <div className={`flex items-center gap-1.5 mb-1.5 ${darkMode ? "text-gray-500" : "text-gray-400"}`}>
+                <Terminal size={11} aria-hidden="true" />
+                <p id={`logs-label-${server.replace(/\s+/g, '-')}`} className="text-xs font-medium">Logs</p>
+              </div>
+              <pre
+                ref={preRef}
+                id={logsId}
+                aria-labelledby={`logs-label-${server.replace(/\s+/g, '-')}`}
+                aria-live="polite"
+                aria-atomic="false"
+                className={`p-3 rounded-xl h-36 overflow-y-auto text-xs font-mono leading-relaxed border custom-scrollbar ${darkMode
+                  ? "bg-gray-950 text-gray-400 border-gray-800"
+                  : "bg-gray-900 text-gray-300 border-gray-800"
+                }`}
+              >
+                {logs || "Sin logs aún..."}
+              </pre>
+            </div>
+
+            {/* Command input */}
+            <div className="flex gap-2">
+              <label htmlFor={cmdInputId} className="sr-only">Comando para el servidor {server}</label>
+              <input
+                id={cmdInputId}
+                type="text"
+                value={command}
+                onChange={(e) => setCommand(e.target.value)}
+                onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Enter') sendCommand(); }}
+                placeholder="$ comando..."
+                className={`flex-1 px-3 py-2 text-xs font-mono rounded-xl border transition-colors focus:outline-none ${darkMode
+                  ? "bg-gray-900 border-gray-700 text-gray-200 placeholder-gray-600 focus:border-purple-500/60"
+                  : "bg-white border-gray-200 text-gray-800 placeholder-gray-400 focus:border-purple-400"
+                }`}
+              />
+              <button
+                onClick={(e) => { e.stopPropagation(); sendCommand(); }}
+                className="px-3 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white transition-colors"
+                aria-label={`Enviar comando al servidor ${server}`}
+              >
+                <Send size={14} aria-hidden="true" />
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

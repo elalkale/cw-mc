@@ -2,9 +2,20 @@ import React from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import ServerDetail from '../components/ServerDetail.jsx';
 import FileExplorer from '../components/FileExplorer.jsx';
-import { ArrowLeft } from 'lucide-react';
+import {
+  ArrowLeft, Sun, Moon, Cloud, CloudRain, Zap, Shield, Users,
+} from 'lucide-react';
 
-export default function ServerDetailPage({ servers, startServer, stopServer, sendCommand, darkMode }) {
+const QUICK_CMDS = [
+  { label: 'Día',       cmd: 'time set day',    Icon: Sun,       cls: 'border-yellow-500/30 text-yellow-400 hover:bg-yellow-500/10 hover:border-yellow-400/50' },
+  { label: 'Noche',     cmd: 'time set night',  Icon: Moon,      cls: 'border-indigo-500/30 text-indigo-400 hover:bg-indigo-500/10 hover:border-indigo-400/50' },
+  { label: 'Despejado', cmd: 'weather clear',   Icon: Cloud,     cls: 'border-sky-500/30    text-sky-400    hover:bg-sky-500/10    hover:border-sky-400/50'    },
+  { label: 'Lluvia',    cmd: 'weather rain',    Icon: CloudRain, cls: 'border-blue-500/30   text-blue-400   hover:bg-blue-500/10   hover:border-blue-400/50'   },
+  { label: 'Tormenta',  cmd: 'weather thunder', Icon: Zap,       cls: 'border-amber-500/30  text-amber-400  hover:bg-amber-500/10  hover:border-amber-400/50'  },
+  { label: 'OP',        cmd: 'op akalex07',     Icon: Shield,    cls: 'border-purple-500/30 text-purple-400 hover:bg-purple-500/10 hover:border-purple-400/50' },
+];
+
+export default function ServerDetailPage({ servers, startServer, stopServer, forceStopServer, sendCommand, darkMode }) {
   const { serverName } = useParams();
   const navigate = useNavigate();
 
@@ -18,149 +29,137 @@ export default function ServerDetailPage({ servers, startServer, stopServer, sen
           aria-label="Volver al Dashboard"
           className="flex items-center gap-2 text-purple-400 hover:text-purple-300 transition mb-6"
         >
-          <ArrowLeft size={20} aria-hidden="true" />
+          <ArrowLeft size={18} aria-hidden="true" />
           Volver al Dashboard
         </button>
-        {/* role="alert" para que los lectores anuncien el error inmediatamente (WCAG 3.3.1) */}
-        <div
-          role="alert"
-          className="bg-gradient-to-r from-red-900/30 to-pink-900/30 border border-red-500/50 text-red-300 px-4 py-3 rounded-lg"
-        >
-          <span aria-hidden="true">⚠️ </span>Servidor no encontrado
+        <div role="alert" className="bg-gradient-to-r from-red-900/30 to-pink-900/30 border border-red-500/50 text-red-300 px-4 py-3 rounded-xl">
+          Servidor no encontrado
         </div>
       </div>
     );
   }
 
+  const panelBg = darkMode
+    ? 'bg-gradient-to-br from-gray-800 to-gray-900 border-purple-500/20'
+    : 'bg-white border-gray-200';
+
   return (
-    <div className={`max-w-7xl mx-auto mt-2 md:mt-6 px-4 md:px-6 pb-8 transition-colors duration-300 space-y-4 ${darkMode ? 'bg-gray-900' : 'bg-gray-50'
-      }`}>
+    <div className={`max-w-7xl mx-auto mt-2 md:mt-6 px-4 md:px-6 pb-8 transition-colors duration-300 space-y-4 ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
+
+      {/* Botón volver */}
       <button
         onClick={() => navigate('/dashboard')}
         aria-label="Volver al Dashboard de servidores"
-        className={`w-fit px-4 py-2 text-sm md:text-base rounded-lg transition border flex items-center gap-2 group ${darkMode
-          ? 'bg-purple-600/20 hover:bg-purple-600/40 text-purple-300 border-purple-500/30'
-          : 'bg-purple-200/30 hover:bg-purple-300/30 text-purple-700 border-purple-400/50'
-          }`}
+        className={`w-fit flex items-center gap-2 px-3.5 py-2 text-sm rounded-xl transition-all border group ${darkMode
+          ? 'bg-gray-800/60 hover:bg-gray-800 text-gray-300 border-gray-700/60 hover:border-gray-600'
+          : 'bg-white hover:bg-gray-50 text-gray-600 border-gray-200 hover:border-gray-300'
+        }`}
       >
-        {/* Flecha decorativa oculta para lectores — el texto "Volver" es suficiente */}
-        <span className="group-hover:-translate-x-1 transition" aria-hidden="true">←</span>
+        <ArrowLeft size={15} className="group-hover:-translate-x-0.5 transition-transform" aria-hidden="true" />
         Volver
       </button>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
-        {/* Columna principal */}
-        <div className="md:col-span-2 space-y-4 md:space-y-6">
+
+        {/* ── Columna principal ── */}
+        <div className="md:col-span-2 space-y-4">
           <ServerDetail
             server={serverName}
             data={data}
             onStart={startServer}
             onStop={stopServer}
+            onForceStop={forceStopServer}
             darkMode={darkMode}
           />
 
           {/* Comandos rápidos */}
-          <div className={`rounded-2xl shadow-lg p-4 md:p-6 border transition-colors ${darkMode
-            ? 'bg-gradient-to-br from-gray-800 to-gray-900 border-purple-500/20'
-            : 'bg-gradient-to-br from-gray-100 to-gray-200 border-purple-400/50'
-            }`}>
-            <h2 className={`text-lg md:text-xl font-bold bg-clip-text text-transparent mb-4 ${darkMode ? 'bg-gradient-to-r from-purple-300 to-pink-300' : 'bg-gradient-to-r from-purple-700 to-pink-700'
-              }`}>
-              <span aria-hidden="true">⚡ </span>Comandos Rápidos
-            </h2>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 md:gap-3">
-              <button
-                onClick={() => sendCommand(serverName, 'time set day')}
-                aria-label="Establecer tiempo de día en el servidor"
-                className="px-2 md:px-4 py-2 text-sm md:text-base bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition"
-              >
-                Día
-              </button>
-              <button
-                onClick={() => sendCommand(serverName, 'time set night')}
-                aria-label="Establecer tiempo de noche en el servidor"
-                className="px-2 md:px-4 py-2 text-sm md:text-base bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition"
-              >
-                Noche
-              </button>
-              <button
-                onClick={() => sendCommand(serverName, 'weather clear')}
-                aria-label="Limpiar el clima del servidor"
-                className="px-2 md:px-4 py-2 text-sm md:text-base bg-green-600 hover:bg-green-700 text-white rounded-lg transition"
-              >
-                Clima
-              </button>
-              <button
-                onClick={() => sendCommand(serverName, 'weather rain')}
-                aria-label="Activar lluvia en el servidor"
-                className="px-2 md:px-4 py-2 text-sm md:text-base bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition"
-              >
-                Lluvia
-              </button>
-              <button
-                onClick={() => sendCommand(serverName, 'weather thunder')}
-                aria-label="Activar tormenta en el servidor"
-                className="px-2 md:px-4 py-2 text-sm md:text-base bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg transition"
-              >
-                Tormenta
-              </button>
-              <button
-                onClick={() => sendCommand(serverName, 'op akalex07')}
-                aria-label="Dar permisos de operador (OP) a akalex07"
-                className="px-2 md:px-4 py-2 text-sm md:text-base bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition"
-              >
-                OP
-              </button>
+          <div className={`rounded-2xl shadow-sm p-4 md:p-5 border transition-colors ${panelBg}`}>
+            <div className="flex items-center gap-2 mb-4">
+              <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${darkMode ? 'bg-purple-500/15' : 'bg-purple-50'}`}>
+                <Zap size={14} className="text-purple-400" />
+              </div>
+              <h2 className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                Comandos Rápidos
+              </h2>
+            </div>
+
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+              {QUICK_CMDS.map(({ label, cmd, Icon, cls }) => (
+                <button
+                  key={cmd}
+                  onClick={() => sendCommand(serverName, cmd)}
+                  aria-label={`${label}: ${cmd}`}
+                  className={`flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl text-xs font-medium border transition-all hover:scale-[1.03] active:scale-95 ${cls}`}
+                >
+                  <Icon size={16} aria-hidden="true" />
+                  {label}
+                </button>
+              ))}
             </div>
           </div>
         </div>
 
-        {/* Columna derecha: jugadores conectados */}
+        {/* ── Columna derecha: jugadores ── */}
         <div className="md:col-span-1">
-          <div className={`rounded-2xl shadow-lg p-4 md:p-6 border transition-colors h-full ${darkMode
-            ? 'bg-gradient-to-br from-gray-800 to-gray-900 border-purple-500/20'
-            : 'bg-gradient-to-br from-gray-100 to-gray-200 border-purple-400/50'
-            }`}>
-            <h3 className={`text-base md:text-lg font-bold bg-clip-text text-transparent mb-4 ${darkMode ? 'bg-gradient-to-r from-purple-300 to-pink-300' : 'bg-gradient-to-r from-purple-700 to-pink-700'
+          <div className={`rounded-2xl shadow-sm p-4 md:p-5 border transition-colors h-full ${panelBg}`}>
+
+            {/* Header jugadores */}
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${darkMode ? 'bg-purple-500/15' : 'bg-purple-50'}`}>
+                  <Users size={14} className="text-purple-400" />
+                </div>
+                <h3 className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                  Jugadores en línea
+                </h3>
+              </div>
+              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                (data?.players?.online ?? 0) > 0
+                  ? 'bg-green-500/15 text-green-400'
+                  : darkMode ? 'bg-gray-700/60 text-gray-500' : 'bg-gray-100 text-gray-400'
               }`}>
-              {/* Emoji decorativo */}
-              <span aria-hidden="true">👥 </span>
-              Jugadores en línea ({data?.players?.online ?? 0})
-            </h3>
-            <div className="flex flex-col gap-3">
+                {data?.players?.online ?? 0}/{data?.players?.max ?? 0}
+              </span>
+            </div>
+
+            {/* Lista */}
+            <div className="flex flex-col gap-2">
               {data?.players?.sample?.length > 0 ? (
                 data.players.sample.map((p) => (
                   <div
                     key={p.id}
-                    className={`flex items-center gap-2 md:gap-3 p-2 rounded-lg border transition ${darkMode
-                      ? 'bg-purple-500/10 border-purple-500/20 hover:border-purple-500/40'
-                      : 'bg-purple-200/30 border-purple-400/50 hover:border-purple-500/70'
-                      }`}
+                    className={`flex items-center gap-3 p-2.5 rounded-xl border transition-colors ${darkMode
+                      ? 'bg-gray-700/30 border-gray-700/40 hover:border-purple-500/30'
+                      : 'bg-gray-50 border-gray-200 hover:border-purple-300'
+                    }`}
                   >
                     <img
                       src={`https://crafatar.com/avatars/${p.id}?overlay`}
                       alt={`Avatar de ${p.name}`}
-                      className="w-8 h-8 rounded-lg flex-shrink-0 border border-purple-500/30"
+                      className="w-8 h-8 rounded-lg flex-shrink-0 border border-purple-500/20"
                     />
-                    <span className={`text-sm md:text-base truncate font-semibold ${darkMode ? 'text-gray-300' : 'text-gray-800'
-                      }`}>
-                      {p.name}
-                    </span>
+                    <div className="min-w-0">
+                      <p className={`text-sm font-semibold truncate ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
+                        {p.name}
+                      </p>
+                      <p className="text-xs text-green-500">en línea</p>
+                    </div>
                   </div>
                 ))
               ) : (
-                <p className={`text-sm text-center py-4 ${darkMode ? 'text-gray-400' : 'text-gray-700'
-                  }`}>
-                  No hay jugadores conectados
-                </p>
+                <div className={`flex flex-col items-center justify-center gap-2 py-8 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>
+                  <Users size={28} className="opacity-30" />
+                  <p className="text-xs text-center">No hay jugadores conectados</p>
+                </div>
               )}
             </div>
           </div>
         </div>
       </div>
-      {/* haz que el contenedor siempre tenga 400px de altura */}
-      <div className="mt-4 h-[400px] min-h-[400px]">
-        <FileExplorer serverName={serverName} />
+
+      {/* File Explorer */}
+      <div className="h-[400px] min-h-[400px]">
+        <FileExplorer serverName={serverName} darkMode={darkMode} />
       </div>
     </div>
   );
