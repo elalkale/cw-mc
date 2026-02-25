@@ -130,21 +130,26 @@ export default function ServerDetail({ server, data, onStart, onStop, onForceSto
     <div className="flex flex-col space-y-4">
 
       {/* ── Header con banner ──────────────────────────────────────────────── */}
-      <div className={`rounded-2xl overflow-hidden shadow-lg border ${darkMode ? 'border-purple-500/20' : 'border-gray-200'}`}>
-        <div className="h-20 relative">
-          {data.icon ? (
+      <div className={`rounded-2xl overflow-hidden shadow-lg border ${darkMode
+        ? 'bg-gradient-to-br from-gray-800/90 via-purple-950/10 to-gray-900 border-purple-500/25'
+        : 'bg-gradient-to-br from-white to-purple-50/70 border-purple-300/60'
+      }`}>
+
+        {/* Banner */}
+        <div className="h-20 sm:h-24 relative overflow-hidden flex-shrink-0 z-0">
+          {data.icon && (
             <img
               src={`${API_BASE}/api/server-icon/${encodeURIComponent(server)}`}
-              alt="" className="w-full h-full object-cover"
+              alt="" aria-hidden="true"
+              className="absolute inset-0 w-full h-full object-cover scale-110 blur-xl opacity-25"
               onError={(e) => { e.target.style.display = 'none'; }}
             />
-          ) : (
-            <div className={`w-full h-full ${darkMode
-              ? 'bg-gradient-to-br from-purple-900/70 via-indigo-900/50 to-pink-900/60'
-              : 'bg-gradient-to-br from-purple-200/80 via-indigo-100 to-pink-200/80'
-            }`} />
           )}
-          <div className="absolute inset-0 bg-gradient-to-t from-gray-900/70 to-transparent" />
+          <div className={`absolute inset-0 ${darkMode
+            ? 'bg-gradient-to-br from-purple-900/70 via-indigo-900/50 to-pink-900/60'
+            : 'bg-gradient-to-br from-purple-200/80 via-indigo-100 to-pink-200/80'
+          }`} />
+          <div className="absolute inset-0 bg-gradient-to-t from-gray-900/60 to-transparent" />
 
           {/* Badge estado */}
           <div className="absolute top-3 right-3">
@@ -157,27 +162,30 @@ export default function ServerDetail({ server, data, onStart, onStop, onForceSto
               {data.running ? 'Activo' : 'Detenido'}
             </div>
           </div>
+        </div>
 
-          {/* Icono en banner */}
-          <div className="absolute bottom-3 left-4">
+        {/* Icono + Info */}
+        <div className="px-5 pb-4 -mt-4 sm:-mt-5 flex flex-row gap-4 items-start relative z-10">
+          <div className="flex-shrink-0">
             {data.icon ? (
               <img
                 src={`${API_BASE}/api/server-icon/${encodeURIComponent(server)}`}
                 alt={`Icono ${server}`}
                 onError={(e) => { e.target.style.display = 'none'; }}
-                className="w-10 h-10 rounded-xl object-cover border border-white/20 shadow-md"
+                className={`w-16 h-16 sm:w-20 sm:h-20 rounded-2xl object-cover border-4 shadow-xl ${darkMode ? 'border-gray-900' : 'border-white'}`}
               />
             ) : (
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-xl shadow-md border border-white/10" aria-hidden="true">
+              <div className={`w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-2xl shadow-xl border-4 ${darkMode ? 'border-gray-900' : 'border-white'}`} aria-hidden="true">
                 🎮
               </div>
             )}
           </div>
-        </div>
-
-        <div className={`px-5 py-3.5 ${darkMode ? 'bg-gradient-to-br from-gray-800/95 via-purple-950/15 to-gray-900' : 'bg-gradient-to-br from-white to-purple-50/50'}`}>
-          <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{server}</h2>
-          <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Panel de control del servidor</p>
+          <div className="flex-1 min-w-0 pt-5 sm:pt-6">
+            <h2 className={`text-xl font-bold bg-gradient-to-r bg-clip-text text-transparent ${darkMode ? 'from-purple-300 via-pink-300 to-purple-200' : 'from-purple-700 via-pink-600 to-purple-600'}`}>
+              {server}
+            </h2>
+            <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Panel de control del servidor</p>
+          </div>
         </div>
       </div>
 
