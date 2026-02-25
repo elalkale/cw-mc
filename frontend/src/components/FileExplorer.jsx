@@ -1,596 +1,470 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { replace } from 'react-router-dom';
+import { API_BASE, fetchWithToken } from '../lib/api.js';
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+const IMAGE_EXT = /\.(png|jpg|jpeg|gif)$/i;
+const BINARY_EXT = /\.(jar|java|zip|rar|7z|gz)$/i;
+
+const isImage = (name) => IMAGE_EXT.test(name);
+
+function getFileIcon(name, isDirectory) {
+  if (isDirectory) return '📁';
+  if (/\.(jar|java)$/.test(name)) return '📦';
+  if (isImage(name)) return '🖼️';
+  if (/\.(zip|rar|7z|gz)$/.test(name)) return '🗜️';
+  if (/\.json$/.test(name)) return '📝';
+  return '📄';
+}
+
+// Construye una ruta relativa correcta sin dobles barras
+function joinPath(base, name) {
+  return base === '/' ? `/${name}` : `${base}/${name}`;
+}
+
+// ── Componente ────────────────────────────────────────────────────────────────
 
 const FileExplorer = ({ serverName }) => {
-    // Vamos a guardar la lista de archivos aquí
-    const [items, setItems] = useState([]);
+  const [items, setItems] = useState([]);
+  const [currentPath, setCurrentPath] = useState('/');
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(false);
 
-    // Guardamos la ruta en la que estamos (por defecto la principal "/")
-    const [currentPath, setCurrentPath] = useState('/');
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [fileContent, setFileContent] = useState('');
+  const [loadingFile, setLoadingFile] = useState(false);
+  const [savingFile, setSavingFile] = useState(false);
 
-    // Guardamos si hay algún error para mostrárselo al usuario
-    const [error, setError] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
-    // Estado para saber si está cargando (para mostrar un spinner o texto)
-    const [loading, setLoading] = useState(false);
+  const fileInputRef = useRef(null);
+  const replaceInputRef = useRef(null);
 
-    // === NUEVOS ESTADOS PARA LEER ARCHIVOS ===
-    const [selectedFile, setSelectedFile] = useState(null);
-    const [fileContent, setFileContent] = useState('');
-    const [loadingFile, setLoadingFile] = useState(false);
+  // ── Cargar listado ──────────────────────────────────────────────────────────
 
-    // Esta función se encarga de ir al Backend a pedir los archivos
-    const fetchFiles = async (path = '/') => {
-        setLoadingFile(false);
-        setLoading(true);
-        setError(null);
+  const fetchFiles = async (targetPath = '/') => {
+    setLoading(true);
+    setError(null);
+    setLoadingFile(false);
 
-        try {
-            // Recuerda: sacamos de localStorage el token de las llaves ("tu-carnet-de-identidad")
-            const token = localStorage.getItem('authToken');
+    try {
+      const res = await fetchWithToken(
+        `${API_BASE}/api/files/${serverName}?path=${encodeURIComponent(targetPath)}`
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Error al cargar los archivos');
+      setItems(data.items);
+      setCurrentPath(data.currentPath);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-            // Armamos la URL para llamar al backend. 
-            // encodeURIComponent se asegura de que caracteres raros en la ruta no rompan el enlace
-            const response = await fetch(`http://localhost:4000/api/files/${serverName}?path=${encodeURIComponent(path)}`, {
-                headers: {
-                    'Authorization': `Bearer ${token}` // Aquí le pasamos el token al guardia de seguridad
-                }
-            });
+  useEffect(() => {
+    if (serverName) fetchFiles('/');
+  }, [serverName]);
 
-            const data = await response.json();
+  // ── Abrir archivo ───────────────────────────────────────────────────────────
 
-            if (!response.ok) {
-                throw new Error(data.error || 'Error al cargar los archivos');
-            }
+  const openFile = async (fileName) => {
+    const filePath = joinPath(currentPath, fileName);
+    setLoadingFile(true);
+    setError(null);
+    setSelectedFile(fileName);
+    setFileContent(null);
 
-            setItems(data.items);
-            setCurrentPath(data.currentPath);
-        } catch (err) {
-            setError(err.message);
-        } finally {
-            setLoading(false);
-        }
-    };
+    try {
+      const res = await fetchWithToken(
+        `${API_BASE}/api/files/${serverName}/content?path=${encodeURIComponent(filePath)}`
+      );
 
-    // === NUEVA FUNCIÓN PARA ABRIR UN ARCHIVO ===
-    const openFile = async (fileName) => {
-        const filePath = currentPath === '/' ? `/${fileName}` : `${currentPath}/${fileName}`;
+      if (!res.ok) {
+        const errorText = await res.text();
+        throw new Error(errorText || 'Error al leer el archivo');
+      }
 
-        setLoadingFile(true);
-        setError(null);
-        setSelectedFile(fileName);
-        setFileContent(null); // Limpiamos contenido anterior
+      if (isImage(fileName)) {
+        const blob = await res.blob();
+        setFileContent(URL.createObjectURL(blob));
+      } else {
+        const data = await res.json();
+        setFileContent(data.content);
+      }
+    } catch (err) {
+      setError(err.message);
+      setSelectedFile(null);
+    } finally {
+      setLoadingFile(false);
+    }
+  };
 
-        try {
-            const token = localStorage.getItem('authToken');
-            const response = await fetch(
-                `http://localhost:4000/api/files/${serverName}/content?path=${encodeURIComponent(filePath)}`,
-                {
-                    headers: {
-                        Authorization: `Bearer ${token}`
-                    }
-                }
-            );
+  // ── Guardar archivo (unificado para edición normal y reemplazo) ─────────────
 
-            if (!response.ok) {
-                // Si el backend respondió error, lo leemos como texto para mostrarlo
-                const errorText = await response.text();
-                throw new Error(errorText || 'Error al leer el archivo');
-            }
+  const saveFile = async (contentOverride, fileNameOverride) => {
+    const targetName = fileNameOverride ?? selectedFile;
+    const targetContent = contentOverride ?? fileContent;
+    if (!targetName) return;
 
-            if (fileName.match(/\.(png|jpg|jpeg|gif)$/i)) {
-                // 👈 Leer como blob para imágenes
-                const blob = await response.blob();
-                const imageUrl = URL.createObjectURL(blob);
-                setFileContent(imageUrl);
-            } else {
-                // 👈 Leer como JSON para texto
-                const data = await response.json();
-                setFileContent(data.content);
-            }
-        } catch (err) {
-            setError(err.message);
-            setSelectedFile(null);
-        } finally {
-            setLoadingFile(false);
-        }
-    };
-    // Estado para guardar
-    const [savingFile, setSavingFile] = useState(false);
+    setSavingFile(true);
+    setError(null);
 
-    // === FUNCIÓN PARA GUARDAR EL ARCHIVO ===
-    const saveFile = async () => {
-        if (!selectedFile) return;
+    try {
+      const filePath = joinPath(currentPath, targetName);
+      let body;
 
-        setSavingFile(true);
-        setError(null);
-
-        try {
-            const token = localStorage.getItem('authToken');
-            let body;
-
-            if (selectedFile.match(/\.(png|jpg|jpeg|gif)$/i)) {
-                // Imagen: convertir a base64 si no lo es ya
-                // fileContent podría ser un DataURL o un blob URL
-                if (fileContent.startsWith('blob:')) {
-                    // Tenemos un blob URL: necesitamos convertirlo a base64
-                    const res = await fetch(fileContent);
-                    const blob = await res.blob();
-                    const reader = new FileReader();
-                    body = await new Promise((resolve) => {
-                        reader.onloadend = () => resolve({ content: reader.result, isBase64: true });
-                        reader.readAsDataURL(blob);
-                    });
-                } else {
-                    // Ya es DataURL base64
-                    body = { content: fileContent, isBase64: true };
-                }
-            } else {
-                // Texto plano
-                body = { content: fileContent };
-            }
-
-            const filePath = currentPath === '/' ? `${selectedFile}` : `${currentPath}/${selectedFile}`;
-            const response = await fetch(
-                `http://localhost:4000/api/files/${serverName}/content?path=${encodeURIComponent(filePath)}`,
-                {
-                    method: 'PUT',
-                    headers: {
-                        'Authorization': `Bearer ${token}`,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(body)
-                }
-            );
-
-            const data = await response.json();
-            if (!response.ok) throw new Error(data.error || 'Error al guardar el archivo');
-
-            // Aquí podrías mostrar notificación de éxito
-            // alert('Archivo guardado correctamente');
-        } catch (err) {
-            setError(err.message);
-        } finally {
-            setSavingFile(false);
-        }
-    };
-
-    //Estado para reemplazar
-
-    const saveFileWithContent = async (content, fileNameOverride) => {
-        if (!fileNameOverride) return;
-
-        setSavingFile(true);
-        setError(null);
-
-        try {
-            const token = localStorage.getItem('authToken');
-            let body;
-
-            if (fileNameOverride.match(/\.(png|jpg|jpeg|gif)$/i)) {
-                body = { content, isBase64: true };
-            } else {
-                body = { content };
-            }
-
-            const filePath = currentPath === '/' ? fileNameOverride : `${currentPath}/${fileNameOverride}`;
-
-            const response = await fetch(
-                `http://localhost:4000/api/files/${serverName}/content?path=${encodeURIComponent(filePath)}`,
-                {
-                    method: 'PUT',
-                    headers: {
-                        'Authorization': `Bearer ${token}`,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(body)
-                }
-            );
-
-            const data = await response.json();
-            if (!response.ok) throw new Error(data.error || 'Error al guardar el archivo');
-
-            // Éxito
-            // alert('Archivo reemplazado correctamente');
-        } catch (err) {
-            setError(err.message);
-        } finally {
-            setSavingFile(false);
-        }
-    };
-
-    const handleReplaceFile = async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-
-        // Confirmación antes de reemplazar
-        const confirmReplace = window.confirm(
-            `¿Estás seguro de que quieres reemplazar "${selectedFile}" con "${file.name}"?`
-        );
-        if (!confirmReplace) {
-            e.target.value = null; // Limpiar input
-            return;
-        }
-
-        const reader = new FileReader();
-
-        reader.onloadend = async () => {
-            const fileDataUrl = reader.result; // data:image/png;base64,... o texto
-            setFileContent(fileDataUrl);
-
-            // Usamos el nombre original para mantenerlo igual
-            await saveFileWithContent(fileDataUrl, selectedFile);
-        };
-
-        // Leer como DataURL para imágenes, como texto para otros
-        if (file.type.startsWith('image/')) {
-            reader.readAsDataURL(file);
+      if (isImage(targetName)) {
+        if (typeof targetContent === 'string' && targetContent.startsWith('blob:')) {
+          const res = await fetch(targetContent);
+          const blob = await res.blob();
+          const dataUrl = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result);
+            reader.readAsDataURL(blob);
+          });
+          body = { content: dataUrl, isBase64: true };
         } else {
-            reader.readAsText(file);
+          body = { content: targetContent, isBase64: true };
         }
+      } else {
+        body = { content: targetContent };
+      }
 
-        e.target.value = null;
+      const res = await fetchWithToken(
+        `${API_BASE}/api/files/${serverName}/content?path=${encodeURIComponent(filePath)}`,
+        { method: 'PUT', body: JSON.stringify(body) }
+      );
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Error al guardar el archivo');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSavingFile(false);
+    }
+  };
+
+  // ── Reemplazar archivo (desde input[file]) ──────────────────────────────────
+
+  const handleReplaceFile = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    if (!window.confirm(`¿Reemplazar "${selectedFile}" con "${file.name}"?`)) {
+      e.target.value = null;
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onloadend = async () => {
+      const dataUrl = reader.result;
+      setFileContent(dataUrl);
+      await saveFile(dataUrl, selectedFile);
     };
 
+    if (file.type.startsWith('image/')) {
+      reader.readAsDataURL(file);
+    } else {
+      reader.readAsText(file);
+    }
 
-    // Estado para borrar
-    const [deleting, setDeleting] = useState(false);
+    e.target.value = null;
+  };
 
-    // Estado para descargar
-    const [downloading, setDownloading] = useState(false);
+  // ── Borrar ──────────────────────────────────────────────────────────────────
 
-    // === FUNCIÓN PARA BORRAR UN ARCHIVO/CARPETA ===
-    const deleteItem = async (itemName, e) => {
-        // Evitamos que al dar click en borrar, también se abra la carpeta/archivo
-        e.stopPropagation();
+  const deleteItem = async (itemName, e) => {
+    e.stopPropagation();
+    if (!window.confirm(`¿Eliminar "${itemName}"?\n¡Esta acción no se puede deshacer!`)) return;
 
-        const confirmDelete = window.confirm(`¿Estás seguro de que quieres eliminar "${itemName}"?\n¡Esta acción no se puede deshacer!`);
-        if (!confirmDelete) return;
+    const itemPath = joinPath(currentPath, itemName);
+    setDeleting(true);
+    setError(null);
 
-        const itemPath = currentPath === '/' ? `/${itemName}` : `${currentPath}/${itemName}`;
-        setDeleting(true);
-        setError(null);
+    try {
+      const res = await fetchWithToken(
+        `${API_BASE}/api/files/${serverName}/content?path=${encodeURIComponent(itemPath)}`,
+        { method: 'DELETE' }
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Error al eliminar');
+      fetchFiles(currentPath);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setDeleting(false);
+    }
+  };
 
-        try {
-            const token = localStorage.getItem('authToken');
-            const response = await fetch(`http://localhost:4000/api/files/${serverName}/content?path=${encodeURIComponent(itemPath)}`, {
-                method: 'DELETE',
-                headers: {
-                    'Authorization': `Bearer ${token}`
-                }
-            });
+  // ── Crear carpeta / archivo ─────────────────────────────────────────────────
 
-            const data = await response.json();
-            if (!response.ok) throw new Error(data.error || 'Error al eliminar');
+  const createNewItem = async (type) => {
+    const label = type === 'folder' ? 'Nombre de la nueva carpeta:' : 'Nombre del nuevo archivo (ej. notas.txt):';
+    const itemName = window.prompt(label);
+    if (!itemName?.trim()) return;
+    if (itemName.includes('/') || itemName.includes('\\')) {
+      alert('El nombre no puede contener barras.');
+      return;
+    }
 
-            // Refrescar la lista de archivos actual tras borrar
-            fetchFiles(currentPath);
-        } catch (err) {
-            setError(err.message);
-        } finally {
-            setDeleting(false);
-        }
-    };
+    setLoading(true);
+    setError(null);
 
-    // === FUNCIONES PARA CREAR NUEVOS ARCHIVOS / CARPETAS ===
-    const createNewItem = async (type) => {
-        const promptText = type === 'folder' ? 'Nombre de la nueva carpeta:' : 'Nombre del nuevo archivo (ej. notas.txt):';
-        const itemName = window.prompt(promptText);
+    try {
+      const endpoint = type === 'folder'
+        ? `${API_BASE}/api/files/${serverName}/folder?path=${encodeURIComponent(currentPath)}`
+        : `${API_BASE}/api/files/${serverName}/file?path=${encodeURIComponent(currentPath)}`;
+      const payloadKey = type === 'folder' ? 'folderName' : 'fileName';
 
-        if (!itemName || itemName.trim() === '') return; // Cancelado o vacío
-        if (itemName.includes('/') || itemName.includes('\\')) {
-            return alert('El nombre no puede contener barras o caracteres especiales de directorios.');
-        }
+      const res = await fetchWithToken(endpoint, {
+        method: 'POST',
+        body: JSON.stringify({ [payloadKey]: itemName.trim() }),
+      });
 
-        setError(null);
-        setLoading(true);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `Error al crear ${type}`);
+      fetchFiles(currentPath);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-        try {
-            const token = localStorage.getItem('authToken');
-            const endpoint = type === 'folder'
-                ? `http://localhost:4000/api/files/${serverName}/folder?path=${encodeURIComponent(currentPath)}`
-                : `http://localhost:4000/api/files/${serverName}/file?path=${encodeURIComponent(currentPath)}`;
+  // ── Subir archivo ───────────────────────────────────────────────────────────
 
-            const payloadKey = type === 'folder' ? 'folderName' : 'fileName';
+  const handleFileUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
 
-            const response = await fetch(endpoint, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ [payloadKey]: itemName.trim() })
-            });
+    setUploading(true);
+    setError(null);
 
-            const data = await response.json();
-            if (!response.ok) throw new Error(data.error || `Error al crear ${type}`);
+    const formData = new FormData();
+    formData.append('file', file);
 
-            // Refrescar al finalizar con éxito
-            fetchFiles(currentPath);
-        } catch (err) {
-            setError(err.message);
-        } finally {
-            setLoading(false);
-        }
-    };
+    try {
+      const res = await fetchWithToken(
+        `${API_BASE}/api/files/${serverName}/upload?path=${encodeURIComponent(currentPath)}`,
+        { method: 'POST', body: formData }
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Error al subir archivo');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      fetchFiles(currentPath);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setUploading(false);
+    }
+  };
 
-    // === ESTADOS Y FUNCIÓN PARA SUBIDA DE ARCHIVOS ===
-    const fileInputRef = useRef(null);
-    const [uploading, setUploading] = useState(false);
+  // ── Descargar archivo ───────────────────────────────────────────────────────
 
-    const handleFileUpload = async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
+  const handleDownload = async (fileName, e) => {
+    e?.stopPropagation();
+    setDownloading(true);
+    setError(null);
 
-        setUploading(true);
-        setError(null);
+    try {
+      const filePath = joinPath(currentPath, fileName);
+      const res = await fetchWithToken(
+        `${API_BASE}/api/files/${serverName}/download?path=${encodeURIComponent(filePath)}`
+      );
 
-        const formData = new FormData();
-        formData.append('file', file);
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Error al descargar archivo');
+      }
 
-        try {
-            const token = localStorage.getItem('authToken');
-            const response = await fetch(`http://localhost:4000/api/files/${serverName}/upload?path=${encodeURIComponent(currentPath)}`, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${token}`
-                    // No especificar Content-Type aquí, fetch + FormData lo hace automáticamente
-                },
-                body: formData
-            });
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setDownloading(false);
+    }
+  };
 
-            const data = await response.json();
-            if (!response.ok) throw new Error(data.error || 'Error al subir archivo');
+  // ── Render ──────────────────────────────────────────────────────────────────
 
-            // Refrescar lista de archivos al terminar
-            if (fileInputRef.current) fileInputRef.current.value = '';
-            fetchFiles(currentPath);
-        } catch (err) {
-            setError(err.message);
-        } finally {
-            setUploading(false);
-        }
-    };
+  if (loading) return <div className="text-gray-400">Cargando archivos...</div>;
+  if (error) return <div className="text-red-500">Error: {error}</div>;
 
-    const handleDownload = async (fileName, e) => {
-        if (e) e.stopPropagation();
-        setDownloading(true);
-        setError(null);
-        try {
-            const token = localStorage.getItem('authToken');
-            const filePath = currentPath === '/' ? `/${fileName}` : `${currentPath}/${fileName}`;
-            const response = await fetch(`http://localhost:4000/api/files/${serverName}/download?path=${encodeURIComponent(filePath)}`, {
-                method: 'GET',
-                headers: {
-                    'Authorization': `Bearer ${token}`
-                }
-            });
-
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                throw new Error(errorData.error || 'Error al descargar archivo');
-            }
-
-            const blob = await response.blob();
-            const url = window.URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = fileName;
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
-            window.URL.revokeObjectURL(url);
-        } catch (err) {
-            setError(err.message);
-        } finally {
-            setDownloading(false);
-        }
-    };
-
-    // useEffect es un "gancho" de React que dice: 
-    // "Ejecuta esta función (fetchFiles) nada más crear este componente"
-    useEffect(() => {
-        if (serverName) {
-            fetchFiles('/');
-        }
-    }, [serverName]);
-
-    // Si está cargando, mostramos esto
-    if (loading) return <div className="text-gray-400">Cargando archivos...</div>;
-
-    // Si hay error, mostramos esto
-    if (error) return <div className="text-red-500">Error: {error}</div>;
-
-    return (
-        <div className="bg-gray-800 rounded-lg p-4 border border-gray-700 font-mono text-sm w-full h-full flex flex-col">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-4 shrink-0">
-                <h3 className="text-lg font-bold text-white truncate break-all">
-                    Explorador: <span className="text-gray-400 break-all">{currentPath}</span>
-                </h3>
-                <div className="flex gap-2 flex-wrap">
-                    <button
-                        onClick={() => createNewItem('folder')}
-                        className="flex items-center gap-1 bg-gray-700 hover:bg-gray-600 text-purple-300 px-2 py-1 rounded transition text-xs font-semibold"
-                        title="Crear Nueva Carpeta"
-                    >
-                        📁+ Carpeta
-                    </button>
-                    <button
-                        onClick={() => createNewItem('file')}
-                        className="flex items-center gap-1 bg-gray-700 hover:bg-gray-600 text-blue-300 px-2 py-1 rounded transition text-xs font-semibold"
-                        title="Crear Nuevo Archivo"
-                    >
-                        📄+ Archivo
-                    </button>
-                    <input
-                        type="file"
-                        ref={fileInputRef}
-                        onChange={handleFileUpload}
-                        className="hidden"
-                    />
-                    <button
-                        onClick={() => fileInputRef.current && fileInputRef.current.click()}
-                        disabled={uploading}
-                        className={`flex items-center gap-1 bg-gray-700 hover:bg-gray-600 text-green-300 px-2 py-1 rounded transition text-xs font-semibold ${uploading ? 'opacity-50 cursor-not-allowed' : ''}`}
-                        title="Subir Archivo al Servidor"
-                    >
-                        {uploading ? '⏳ Subiendo...' : '📤 Subir'}
-                    </button>
-                </div>
-            </div>
-            {/* Botón para volver atrás (solo si no estamos en la raíz "/") */}
-            {currentPath !== '/' && (
-                <div
-                    onClick={() => {
-                        // Si estamos en /plugins/Essentials, queremos volver a /plugins
-                        // Dividimos por "/" y quitamos el último elemento
-                        const parts = currentPath.split('/').filter(Boolean);
-                        parts.pop();
-                        const newPath = '/' + parts.join('/');
-                        fetchFiles(newPath);
-                    }}
-                    className="flex items-center gap-2 text-blue-400 hover:text-blue-300 p-2 hover:bg-gray-700 rounded cursor-pointer transition-colors font-bold shrink-0"
-                >
-                    <span className="text-xl">🔙</span>
-                    <span>.. (Volver)</span>
-                </div>
-            )}
-
-            {/* Resolviendo el salto visual: El contenedor se expande para llenar todo el espacio restante (flex-1) */}
-            <div className="space-y-1 overflow-y-auto flex-1 pe-2 custom-scrollbar">
-
-                {items.length === 0 ? (
-                    <div className="text-gray-500 italic p-2 h-full flex items-center justify-center">Carpeta vacía</div>
-                ) : (
-                    items.map((item) => (
-                        <div
-                            key={item.name}
-                            // Si es carpeta, al hacer click llamamos a fetchFiles con la nueva ruta
-                            onClick={() => {
-                                if (item.isDirectory) {
-                                    // Evitamos dobles barras como //plugins
-                                    const newPath = currentPath === '/'
-                                        ? `/${item.name}`
-                                        : `${currentPath}/${item.name}`;
-                                    fetchFiles(newPath);
-                                } else if (!item.name.endsWith('.jar') && !item.name.endsWith('.java') && !item.name.endsWith('.zip') && !item.name.endsWith('.rar') && !item.name.endsWith('.7z')) {
-                                    // === AHORA LLAMAMOS A LA FUNCIÓN DE LEER ===
-                                    openFile(item.name);
-                                }
-                            }}
-                            className="flex items-center gap-2 text-gray-300 hover:text-white p-2 hover:bg-gray-700 rounded cursor-pointer transition-colors"
-                        >
-                            <div className="flex items-center gap-2 flex-1 truncate">
-                                <span className="text-xl shrink-0">
-                                    {/*me gustaría diferenciar en los no directorios*/}
-                                    {item.isDirectory ? '📁' : item.name.endsWith('.jar') || item.name.endsWith('.java') ? '📦'
-                                        : item.name.endsWith('.txt') ? '📄'
-                                            : item.name.endsWith('.json') ? '📝'
-                                                : item.name.endsWith('.zip') || item.name.endsWith('.rar') || item.name.endsWith('.7z') || item.name.endsWith('.gz') ? '🗜️'
-                                                    : item.name.endsWith('.png') || item.name.endsWith('.jpg') || item.name.endsWith('.jpeg') || item.name.endsWith('.gif') ? '🖼️'
-                                                        : '📄'}
-                                </span>
-                                <span className="truncate">{item.name}</span>
-                            </div>
-
-                            {/* Botón de borrar (Papelera) */}
-                            <button
-                                onClick={(e) => deleteItem(item.name, e)}
-                                disabled={deleting}
-                                title={`Eliminar ${item.name}`}
-                                className="text-gray-500 hover:text-red-500 hover:bg-red-500/10 p-1.5 rounded transition shrink-0"
-                            >
-                                🗑️
-                            </button>
-
-                            {/* Botón de descarga */}
-                            {!item.isDirectory && (
-                                <button
-                                    onClick={(e) => handleDownload(item.name, e)}
-                                    disabled={downloading}
-                                    title={`Descargar ${item.name}`}
-                                    className="text-gray-500 hover:text-green-500 hover:bg-green-500/10 p-1.5 rounded transition shrink-0"
-                                >
-                                    ⬇️
-                                </button>
-                            )}
-                        </div>
-                    ))
-                )}
-            </div>
-
-            {/* === EL MODAL/VISOR DEL ARCHIVO === */}
-            {selectedFile && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-                    <div className="bg-gray-900 rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col border border-gray-700">
-                        {/* Cabecera del visor */}
-                        <div className="flex justify-between items-center p-4 border-b border-gray-700 shrink-0">
-                            <h4 className="text-lg font-bold text-white truncate break-all">
-                                {selectedFile.endsWith('.txt') ? '📄'
-                                    : selectedFile.endsWith('.json') ? '📝'
-                                        : selectedFile.endsWith('.png') || selectedFile.endsWith('.jpg') || selectedFile.endsWith('.jpeg') || selectedFile.endsWith('.gif') ? '🖼️'
-                                            : '📄'} {selectedFile}
-                            </h4>
-                            <div className="flex gap-2">
-                                {/* boton de remplazar*/}
-                                <button
-                                    onClick={() => document.getElementById('replaceFileInput').click()}
-                                    className="bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600"
-                                >
-                                    Reemplazar archivo
-                                </button>
-                                <input
-                                    type="file"
-                                    id="replaceFileInput"
-                                    style={{ display: 'none' }}
-                                    onChange={handleReplaceFile}
-                                />
-                                {!selectedFile.endsWith('.png') && !selectedFile.endsWith('.jpg') && !selectedFile.endsWith('.jpeg') && !selectedFile.endsWith('.gif') && (
-                                    <button
-                                        onClick={saveFile}
-                                        disabled={savingFile || loadingFile}
-                                        className="bg-purple-600 hover:bg-purple-500 text-white px-3 py-1 rounded text-sm transition font-bold disabled:opacity-50"
-                                    >
-                                        {savingFile ? '⏳ Guardando...' : '💾 Guardar'}
-                                    </button>
-                                )}
-                                <button
-                                    onClick={() => setSelectedFile(null)}
-                                    className="bg-gray-700 hover:bg-gray-600 text-white px-3 py-1 rounded text-sm transition"
-                                >
-                                    ✖ Cerrar
-                                </button>
-                            </div>
-                        </div>
-
-                        <div className="p-4 flex-1 flex flex-col min-h-[50vh]">
-
-                            {/* Contenido del archivo */}
-                            {selectedFile.endsWith('.png') || selectedFile.endsWith('.jpg') || selectedFile.endsWith('.jpeg') || selectedFile.endsWith('.gif') ? (
-
-                                <div className="r">
-                                    <img className="max-w-full max-h-[50vh] object-contain mx-auto my-4" src={fileContent} alt={selectedFile} />
-                                </div>
-                            ) : (
-                                <div className="p-4 flex-1 flex flex-col min-h-[50vh]">
-                                    {loadingFile ? (
-                                        <div className="text-gray-400 text-center py-10 flex-1 flex items-center justify-center">Cargando archivo...</div>
-                                    ) : (
-                                        <textarea
-                                            className="flex-1 w-full bg-gray-950 text-gray-300 p-4 rounded text-xs sm:text-sm font-mono custom-scrollbar border border-gray-700 focus:border-purple-500 focus:outline-none resize-none"
-                                            value={fileContent}
-                                            onChange={(e) => setFileContent(e.target.value)}
-                                            spellCheck="false"
-                                        />
-                                    )}
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            )}
+  return (
+    <div className="bg-gray-800 rounded-lg p-4 border border-gray-700 font-mono text-sm w-full h-full flex flex-col">
+      {/* Cabecera */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-4 shrink-0">
+        <h3 className="text-lg font-bold text-white truncate break-all">
+          Explorador: <span className="text-gray-400 break-all">{currentPath}</span>
+        </h3>
+        <div className="flex gap-2 flex-wrap">
+          <button
+            onClick={() => createNewItem('folder')}
+            className="flex items-center gap-1 bg-gray-700 hover:bg-gray-600 text-purple-300 px-2 py-1 rounded transition text-xs font-semibold"
+            title="Crear Nueva Carpeta"
+          >
+            📁+ Carpeta
+          </button>
+          <button
+            onClick={() => createNewItem('file')}
+            className="flex items-center gap-1 bg-gray-700 hover:bg-gray-600 text-blue-300 px-2 py-1 rounded transition text-xs font-semibold"
+            title="Crear Nuevo Archivo"
+          >
+            📄+ Archivo
+          </button>
+          <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            className={`flex items-center gap-1 bg-gray-700 hover:bg-gray-600 text-green-300 px-2 py-1 rounded transition text-xs font-semibold ${uploading ? 'opacity-50 cursor-not-allowed' : ''}`}
+            title="Subir Archivo al Servidor"
+          >
+            {uploading ? '⏳ Subiendo...' : '📤 Subir'}
+          </button>
         </div>
-    );
+      </div>
+
+      {/* Botón volver */}
+      {currentPath !== '/' && (
+        <div
+          onClick={() => {
+            const parts = currentPath.split('/').filter(Boolean);
+            parts.pop();
+            fetchFiles('/' + parts.join('/'));
+          }}
+          className="flex items-center gap-2 text-blue-400 hover:text-blue-300 p-2 hover:bg-gray-700 rounded cursor-pointer transition-colors font-bold shrink-0"
+        >
+          <span className="text-xl">🔙</span>
+          <span>.. (Volver)</span>
+        </div>
+      )}
+
+      {/* Listado */}
+      <div className="space-y-1 overflow-y-auto flex-1 pe-2 custom-scrollbar">
+        {items.length === 0 ? (
+          <div className="text-gray-500 italic p-2 h-full flex items-center justify-center">Carpeta vacía</div>
+        ) : (
+          items.map((item) => (
+            <div
+              key={item.name}
+              onClick={() => {
+                if (item.isDirectory) {
+                  fetchFiles(joinPath(currentPath, item.name));
+                } else if (!BINARY_EXT.test(item.name)) {
+                  openFile(item.name);
+                }
+              }}
+              className="flex items-center gap-2 text-gray-300 hover:text-white p-2 hover:bg-gray-700 rounded cursor-pointer transition-colors"
+            >
+              <div className="flex items-center gap-2 flex-1 truncate">
+                <span className="text-xl shrink-0">{getFileIcon(item.name, item.isDirectory)}</span>
+                <span className="truncate">{item.name}</span>
+              </div>
+
+              <button
+                onClick={(e) => deleteItem(item.name, e)}
+                disabled={deleting}
+                title={`Eliminar ${item.name}`}
+                className="text-gray-500 hover:text-red-500 hover:bg-red-500/10 p-1.5 rounded transition shrink-0"
+              >
+                🗑️
+              </button>
+
+              {!item.isDirectory && (
+                <button
+                  onClick={(e) => handleDownload(item.name, e)}
+                  disabled={downloading}
+                  title={`Descargar ${item.name}`}
+                  className="text-gray-500 hover:text-green-500 hover:bg-green-500/10 p-1.5 rounded transition shrink-0"
+                >
+                  ⬇️
+                </button>
+              )}
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* Visor / editor de archivo */}
+      {selectedFile && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="bg-gray-900 rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col border border-gray-700">
+            {/* Cabecera del visor */}
+            <div className="flex justify-between items-center p-4 border-b border-gray-700 shrink-0">
+              <h4 className="text-lg font-bold text-white truncate break-all">
+                {getFileIcon(selectedFile, false)} {selectedFile}
+              </h4>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => replaceInputRef.current?.click()}
+                  className="bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600"
+                >
+                  Reemplazar
+                </button>
+                <input
+                  type="file"
+                  ref={replaceInputRef}
+                  className="hidden"
+                  onChange={handleReplaceFile}
+                />
+                {!isImage(selectedFile) && (
+                  <button
+                    onClick={() => saveFile()}
+                    disabled={savingFile || loadingFile}
+                    className="bg-purple-600 hover:bg-purple-500 text-white px-3 py-1 rounded text-sm transition font-bold disabled:opacity-50"
+                  >
+                    {savingFile ? '⏳ Guardando...' : '💾 Guardar'}
+                  </button>
+                )}
+                <button
+                  onClick={() => setSelectedFile(null)}
+                  className="bg-gray-700 hover:bg-gray-600 text-white px-3 py-1 rounded text-sm transition"
+                >
+                  ✖ Cerrar
+                </button>
+              </div>
+            </div>
+
+            <div className="p-4 flex-1 flex flex-col min-h-[50vh]">
+              {isImage(selectedFile) ? (
+                <img
+                  className="max-w-full max-h-[50vh] object-contain mx-auto my-4"
+                  src={fileContent}
+                  alt={selectedFile}
+                />
+              ) : (
+                <div className="flex-1 flex flex-col min-h-[50vh]">
+                  {loadingFile ? (
+                    <div className="text-gray-400 text-center py-10 flex-1 flex items-center justify-center">
+                      Cargando archivo...
+                    </div>
+                  ) : (
+                    <textarea
+                      className="flex-1 w-full bg-gray-950 text-gray-300 p-4 rounded text-xs sm:text-sm font-mono custom-scrollbar border border-gray-700 focus:border-purple-500 focus:outline-none resize-none"
+                      value={fileContent ?? ''}
+                      onChange={(e) => setFileContent(e.target.value)}
+                      spellCheck="false"
+                    />
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 };
 
 export default FileExplorer;

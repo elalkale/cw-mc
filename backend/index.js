@@ -1,4 +1,3 @@
-// backend/index.js
 import express from 'express';
 import http from 'http';
 import { Server } from 'socket.io';
@@ -10,6 +9,9 @@ import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
 import { status as mcStatus } from 'minecraft-server-util';
 import dotenv from 'dotenv';
+import archiver from 'archiver';
+import multer from 'multer';
+import os from 'os';
 
 dotenv.config();
 
@@ -22,20 +24,38 @@ const app = express();
 app.use(express.json({ limit: '50mb' }));
 
 // --- CORS ---
-const corsOptions = {
-  origin: 'http://localhost:5173',
-  credentials: true,
-};
-app.use(cors(corsOptions));
+const CORS_ORIGIN = process.env.CORS_ORIGIN || 'http://localhost:5173';
+app.use(cors({ origin: CORS_ORIGIN, credentials: true }));
 
 // --- JWT Secret ---
 const JWT_SECRET = process.env.JWT_SECRET || 'supersecretkey';
+
+// --- Config persistente ---
+const configPath = path.join(__dirname, 'config.json');
+
+function loadConfig() {
+  if (!fs.existsSync(configPath)) {
+    const defaultConfig = { serverRoot: path.join(__dirname, '../', 'servers') };
+    fs.writeFileSync(configPath, JSON.stringify(defaultConfig, null, 2));
+    return defaultConfig;
+  }
+  return JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+}
+
+function saveConfig(cfg) {
+  fs.writeFileSync(configPath, JSON.stringify(cfg, null, 2));
+}
+
+// SERVER_ROOT es mutable para que el endpoint de settings pueda actualizarlo en caliente
+let SERVER_ROOT = path.resolve(loadConfig().serverRoot);
+
+// --- Upload temporal ---
+const upload = multer({ dest: os.tmpdir() });
 
 // --- Token verification middleware ---
 function verifyToken(req, res, next) {
   const authHeader = req.headers.authorization;
   const token = authHeader && authHeader.split(' ')[1];
-
   if (!token) return res.status(401).json({ error: 'Token no proporcionado' });
 
   jwt.verify(token, JWT_SECRET, (err, user) => {
@@ -45,115 +65,65 @@ function verifyToken(req, res, next) {
   });
 }
 
-// --- Usuarios de ejemplo ---
-const users = [
-  { id: 1, username: process.env.ADMIN_USER || 'admin', password: process.env.ADMIN_PASS || 'password' }
-];
+// --- Usuario (credenciales desde .env) ---
+const ADMIN_USER = process.env.ADMIN_USER || 'admin';
+const ADMIN_PASS = process.env.ADMIN_PASS || 'password';
 
 // --- Login / Logout ---
 app.post('/login', (req, res) => {
   const { username, password } = req.body;
-  const user = users.find(u => u.username === username && u.password === password);
-
-  if (!user) {
+  if (username !== ADMIN_USER || password !== ADMIN_PASS) {
     return res.status(400).json({ error: 'Usuario o contraseña incorrectos', loggedIn: false });
   }
 
-  // Generar JWT token
-  const token = jwt.sign(
-    { id: user.id, username: user.username },
-    JWT_SECRET,
-    { expiresIn: '24h' }
-  );
-
+  const token = jwt.sign({ id: 1, username }, JWT_SECRET, { expiresIn: '24h' });
   res.json({ ok: true, token, loggedIn: true });
 });
 
-app.post('/logout', (req, res) => {
-  // El logout es solo del lado del cliente eliminando el token de localStorage
-  res.json({ ok: true });
-});
+app.post('/logout', (_req, res) => res.json({ ok: true }));
 
 // --- Verificar sesión actual ---
 app.get('/api/me', verifyToken, (req, res) => {
   res.json({ loggedIn: true, user: req.user });
 });
 
-// --- Endpoint público para servir iconos (sin autenticación) ---
+// --- Icono público (sin auth, directo al filesystem) ---
 app.get('/api/server-icon/:name', (req, res) => {
-  refreshServers();
-  const { name } = req.params;
-  const iconPath = path.join(SERVER_ROOT, name, 'server-icon.png');
-
+  const iconPath = path.join(SERVER_ROOT, req.params.name, 'server-icon.png');
   if (!fs.existsSync(iconPath)) {
     return res.status(404).json({ error: 'Icono no encontrado' });
   }
-
   res.sendFile(iconPath);
 });
 
-// --- Endpoint settings para cambiar configuraciones del servidor (por el momento solo ruta de servidores) ---
-app.post('/api/settings', verifyToken, (req, res) => {
-  const { serverRoot } = req.body;
-  if (serverRoot) {
-    const resolvedPath = path.resolve(serverRoot);
-    if (fs.existsSync(resolvedPath) && fs.statSync(resolvedPath).isDirectory()) {
-      process.env.SERVER_ROOT = resolvedPath;
-      refreshServers(); // Refrescar servidores con la nueva ruta
-      return res.json({ ok: true, message: 'Ruta de servidores actualizada' });
-    } else {
-      return res.status(400).json({ error: 'La ruta proporcionada no es un directorio válido' });
-    }
-  }
-  res.status(400).json({ error: 'No se proporcionaron configuraciones válidas para actualizar' });
-});
-
-const configPath = path.join(__dirname, 'config.json');
-
-function loadConfig() {
-  if (!fs.existsSync(configPath)) {
-    const defaultConfig = { serverRoot: path.join(__dirname, '../', 'servers') };
-    fs.writeFileSync(configPath, JSON.stringify(defaultConfig, null, 2));
-    return defaultConfig;
-  }
-  const raw = fs.readFileSync(configPath, 'utf-8');
-  return JSON.parse(raw);
-}
-
-app.get('/api/settings', verifyToken, (req, res) => {
-  const config = loadConfig();
-  res.json({ serverRoot: config.serverRoot });
-});
-
-
-// --- Detectar servidores automáticamente ---
-const config = loadConfig();
-const SERVER_ROOT = path.resolve(config.serverRoot) || path.join(__dirname, 'servers');
+// --- Servidores en memoria ---
 const servers = {};
 
-// --- Detectar versión del servidor --- //
 function getServerVersion(dir) {
   try {
-    const files = fs.readdirSync(dir);
-    const jar = files.find(f => f.endsWith('.jar'));
+    const jar = fs.readdirSync(dir).find(f => f.endsWith('.jar'));
     if (jar) {
       const match = jar.match(/(\d+\.\d+(\.\d+)?)/);
-      if (match) return match[1];
-      return jar;
+      return match ? match[1] : jar;
     }
-  } catch (err) {
-    console.error('Error leyendo versión en', dir, err);
+  } catch {
+    // directorio inaccesible — devolvemos desconocida
   }
   return 'Desconocida';
 }
 
-// Función para refrescar servidores en memoria
 function refreshServers() {
+  // Crear el directorio si no existe todavía
+  if (!fs.existsSync(SERVER_ROOT)) {
+    fs.mkdirSync(SERVER_ROOT, { recursive: true });
+    console.log(`Directorio de servidores creado: ${SERVER_ROOT}`);
+  }
+
   const folders = fs.readdirSync(SERVER_ROOT, { withFileTypes: true })
     .filter(d => d.isDirectory())
     .map(d => d.name);
 
-  folders.forEach((folder) => {
+  for (const folder of folders) {
     if (!servers[folder]) {
       const dir = path.join(SERVER_ROOT, folder);
       servers[folder] = {
@@ -167,14 +137,15 @@ function refreshServers() {
         },
         process: null,
         logs: '',
-        commandQueue: []
+        commandQueue: [],
       };
-      console.log(
-        `Servidor nuevo detectado automáticamente: ${folder} (versión: ${servers[folder].cfg.version})`
-      );
+      console.log(`Servidor detectado: ${folder} (v${servers[folder].cfg.version})`);
     }
-  });
+  }
 }
+
+// Cargar servidores al arrancar
+refreshServers();
 
 // --- Helper ping Minecraft ---
 async function checkMinecraft(cfg) {
@@ -185,44 +156,75 @@ async function checkMinecraft(cfg) {
       players: {
         online: s.players?.online ?? 0,
         max: s.players?.max ?? 0,
-        sample: s.players?.sample ?? [] // 👈 añadimos lista de jugadores
+        sample: s.players?.sample ?? [],
       },
-      motd: s.motd?.clean ?? null
+      motd: s.motd?.clean ?? null,
     };
   } catch {
     return { up: false, players: { online: 0, max: 0, sample: [] } };
   }
 }
 
-// --- Endpoints API ---
+// --- Función auxiliar: resolver y validar ruta dentro de un servidor ---
+function resolveSafePath(serverDir, relativePath) {
+  const target = path.join(serverDir, relativePath);
+  if (!target.startsWith(serverDir)) return null;
+  return target;
+}
+
+// --- API Router (todas las rutas bajo /api requieren token) ---
 const apiRouter = express.Router();
 apiRouter.use(verifyToken);
 
+// Settings
+apiRouter.get('/settings', (_req, res) => {
+  res.json({ serverRoot: loadConfig().serverRoot });
+});
+
+apiRouter.post('/settings', (req, res) => {
+  const { serverRoot } = req.body;
+  if (!serverRoot) {
+    return res.status(400).json({ error: 'No se proporcionaron configuraciones válidas' });
+  }
+
+  const resolved = path.resolve(serverRoot);
+  if (!fs.existsSync(resolved) || !fs.statSync(resolved).isDirectory()) {
+    return res.status(400).json({ error: 'La ruta proporcionada no es un directorio válido' });
+  }
+
+  SERVER_ROOT = resolved;
+  const cfg = loadConfig();
+  cfg.serverRoot = resolved;
+  saveConfig(cfg);
+  refreshServers();
+
+  res.json({ ok: true, message: 'Ruta de servidores actualizada' });
+});
+
+// Status
 apiRouter.get('/status', async (req, res) => {
   refreshServers();
   const result = {};
+
   for (const [name, state] of Object.entries(servers)) {
     const running = state.process && !state.process.killed;
-    const ping = await checkMinecraft(state.cfg).catch(() => ({ up: false }));
-
+    const ping = await checkMinecraft(state.cfg).catch(() => ({ up: false, players: { online: 0, max: 0, sample: [] } }));
     const iconPath = path.join(state.cfg.dir, 'server-icon.png');
-    const iconUrl = fs.existsSync(iconPath)
-      ? `/api/server-icon/${encodeURIComponent(name)}`
-      : null;
 
     result[name] = {
       running: !!running,
       pid: running ? state.process.pid : null,
       ping,
-      icon: iconUrl,
+      icon: fs.existsSync(iconPath) ? `/api/server-icon/${encodeURIComponent(name)}` : null,
       version: state.cfg.version,
-      players: ping.players // 👈 aquí devolvemos players completos
+      players: ping.players,
     };
   }
+
   res.json(result);
 });
 
-
+// Start
 apiRouter.post('/start', (req, res) => {
   refreshServers();
   const { name } = req.body;
@@ -235,16 +237,15 @@ apiRouter.post('/start', (req, res) => {
   state.logs = '';
   state.commandQueue = [];
 
-  child.stdout.on('data', chunk => {
+  const handleOutput = (chunk) => {
     const s = chunk.toString();
     state.logs += s;
     io.to(name).emit('log', { server: name, line: s });
-  });
-  child.stderr.on('data', chunk => {
-    const s = chunk.toString();
-    state.logs += s;
-    io.to(name).emit('log', { server: name, line: s });
-  });
+  };
+
+  child.stdout.on('data', handleOutput);
+  child.stderr.on('data', handleOutput);
+
   child.on('exit', (code, signal) => {
     const msg = `\n[process exited code=${code} signal=${signal}]\n`;
     state.logs += msg;
@@ -252,12 +253,15 @@ apiRouter.post('/start', (req, res) => {
     state.process = null;
   });
 
-  if (child.stdin) state.commandQueue.forEach(cmd => child.stdin.write(cmd + '\n'));
+  if (child.stdin) {
+    for (const cmd of state.commandQueue) child.stdin.write(cmd + '\n');
+  }
   state.commandQueue = [];
 
   res.json({ ok: true, pid: child.pid });
 });
 
+// Stop
 apiRouter.post('/stop', (req, res) => {
   refreshServers();
   const { name } = req.body;
@@ -270,110 +274,116 @@ apiRouter.post('/stop', (req, res) => {
       state.process.stdin.write('stop\n');
       return res.json({ ok: true, method: 'stdin' });
     }
-    const pid = state.process.pid;
-    const killer = spawn('taskkill', ['/PID', String(pid), '/T', '/F']);
+    const killer = spawn('taskkill', ['/PID', String(state.process.pid), '/T', '/F']);
     killer.on('close', () => res.json({ ok: true, method: 'taskkill' }));
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }
 });
 
+// Logs (vía HTTP, para carga inicial si el socket no está disponible)
 apiRouter.get('/logs/:name', (req, res) => {
-  refreshServers();
   const state = servers[req.params.name];
   if (!state) return res.status(404).json({ error: 'Servidor no encontrado' });
   res.send(state.logs);
 });
 
+// Command
 apiRouter.post('/command', (req, res) => {
-  refreshServers();
   const { name, command } = req.body;
   const state = servers[name];
   if (!state) return res.status(404).json({ error: 'Servidor no encontrado' });
+
   if (!state.process || state.process.killed) {
     state.commandQueue.push(command);
     return res.status(202).json({ ok: true, queued: true });
   }
+
   if (state.process.stdin) {
     state.process.stdin.write(command + '\n');
     return res.json({ ok: true, sent: command });
   }
+
   state.commandQueue.push(command);
   res.status(202).json({ ok: true, queued: true });
 });
 
+// ── Archivos ─────────────────────────────────────────────────────────────────
+
+apiRouter.get('/files/:name', async (req, res) => {
+  const state = servers[req.params.name];
+  if (!state) return res.status(404).json({ error: 'Servidor no encontrado' });
+
+  const relativePath = req.query.path || '/';
+  const targetPath = resolveSafePath(state.cfg.dir, relativePath);
+  if (!targetPath) return res.status(403).json({ error: 'Acceso denegado' });
+
+  try {
+    const items = await fs.promises.readdir(targetPath, { withFileTypes: true });
+    const result = items
+      .map(item => ({ name: item.name, isDirectory: item.isDirectory() }))
+      .sort((a, b) => {
+        if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
+        return a.name.localeCompare(b.name);
+      });
+
+    res.json({ ok: true, currentPath: relativePath, items: result });
+  } catch (err) {
+    if (err.code === 'ENOENT') return res.status(404).json({ error: 'La ruta no existe' });
+    if (err.code === 'ENOTDIR') return res.status(400).json({ error: 'La ruta no es una carpeta' });
+    res.status(500).json({ error: 'Error interno al leer los archivos' });
+  }
+});
+
 apiRouter.get('/files/:name/content', async (req, res) => {
-  refreshServers();
-  const { name } = req.params;
-  const state = servers[name];
+  const state = servers[req.params.name];
+  if (!state) return res.status(404).json({ error: 'Servidor no encontrado' });
 
-  if (!state) {
-    return res.status(404).json({ error: 'Servidor no encontrado' });
-  }
+  const { path: relativePath } = req.query;
+  if (!relativePath) return res.status(400).json({ error: 'Falta el parámetro path' });
 
-  const relativePath = req.query.path;
-  if (!relativePath) {
-    return res.status(400).json({ error: 'Falta proveer el parámetro path' });
-  }
-
-  const targetPath = path.join(state.cfg.dir, relativePath);
-
-  if (!targetPath.startsWith(state.cfg.dir)) {
-    return res.status(403).json({ error: 'Acceso denegado a esta ruta' });
-  }
+  const targetPath = resolveSafePath(state.cfg.dir, relativePath);
+  if (!targetPath) return res.status(403).json({ error: 'Acceso denegado' });
 
   try {
     const stats = await fs.promises.stat(targetPath);
-    if (stats.isDirectory()) {
-      return res.status(400).json({ error: 'Esta ruta es una carpeta, no un archivo' });
-    }
+    if (stats.isDirectory()) return res.status(400).json({ error: 'La ruta es una carpeta' });
 
-    // Detectar extensión de archivo
     const ext = path.extname(targetPath).toLowerCase();
     if (['.png', '.jpg', '.jpeg', '.gif'].includes(ext)) {
-      // Para imágenes: enviamos como binario
       res.sendFile(targetPath);
     } else {
-      // Para texto: enviamos como JSON
       const content = await fs.promises.readFile(targetPath, 'utf8');
       res.json({ ok: true, content });
     }
-  } catch (error) {
-    console.error('Error leyendo archivo:', error);
-    if (error.code === 'ENOENT') return res.status(404).json({ error: 'El archivo no existe' });
+  } catch (err) {
+    if (err.code === 'ENOENT') return res.status(404).json({ error: 'El archivo no existe' });
     res.status(500).json({ error: 'Error interno al leer el archivo' });
   }
 });
 
 apiRouter.put('/files/:name/content', async (req, res) => {
-  refreshServers();
-  const { name } = req.params;
-  const state = servers[name];
+  const state = servers[req.params.name];
   if (!state) return res.status(404).json({ error: 'Servidor no encontrado' });
 
-  const relativePath = req.query.path;
-  const { content, isBase64 } = req.body; // agregamos flag para binario
+  const { path: relativePath } = req.query;
+  const { content, isBase64 } = req.body;
 
-  if (!relativePath) return res.status(400).json({ error: 'Falta proveer path' });
-  if (content === undefined) return res.status(400).json({ error: 'Falta proveer contenido' });
+  if (!relativePath) return res.status(400).json({ error: 'Falta el parámetro path' });
+  if (content === undefined) return res.status(400).json({ error: 'Falta el contenido' });
 
-  const targetPath = path.join(state.cfg.dir, relativePath);
-  if (!targetPath.startsWith(state.cfg.dir)) return res.status(403).json({ error: 'Acceso denegado' });
+  const targetPath = resolveSafePath(state.cfg.dir, relativePath);
+  if (!targetPath) return res.status(403).json({ error: 'Acceso denegado' });
 
   try {
-    // Evitar sobrescribir carpetas
-    if (fs.existsSync(targetPath)) {
-      const stats = await fs.promises.stat(targetPath);
-      if (stats.isDirectory()) return res.status(400).json({ error: 'No se puede sobrescribir una carpeta' });
+    if (fs.existsSync(targetPath) && (await fs.promises.stat(targetPath)).isDirectory()) {
+      return res.status(400).json({ error: 'No se puede sobrescribir una carpeta' });
     }
 
     if (isBase64) {
-      // contenido binario
-      const base64 = content.split(',')[1] || content; // soporta data:image/png;base64,...
-      const buffer = Buffer.from(base64, 'base64');
-      await fs.promises.writeFile(targetPath, buffer);
+      const base64 = content.split(',')[1] || content;
+      await fs.promises.writeFile(targetPath, Buffer.from(base64, 'base64'));
     } else {
-      // contenido texto
       await fs.promises.writeFile(targetPath, content, 'utf8');
     }
 
@@ -384,340 +394,178 @@ apiRouter.put('/files/:name/content', async (req, res) => {
   }
 });
 
-import archiver from 'archiver';
-import multer from 'multer';
-import os from 'os';
+apiRouter.delete('/files/:name/content', async (req, res) => {
+  const state = servers[req.params.name];
+  if (!state) return res.status(404).json({ error: 'Servidor no encontrado' });
 
-const upload = multer({ dest: os.tmpdir() });
+  const { path: relativePath } = req.query;
+  if (!relativePath) return res.status(400).json({ error: 'Falta el parámetro path' });
 
-apiRouter.get('/backup/:name', async (req, res) => {
-  refreshServers();
-  const { name } = req.params;
-  const state = servers[name];
-
-  if (!state) {
-    return res.status(404).json({ error: 'Servidor no encontrado' });
+  const targetPath = resolveSafePath(state.cfg.dir, relativePath);
+  if (!targetPath || targetPath === state.cfg.dir) {
+    return res.status(403).json({ error: 'Acceso denegado' });
   }
 
   try {
-    const archive = archiver('zip', {
-      zlib: { level: 9 } // Compresión máxima
-    });
+    await fs.promises.rm(targetPath, { recursive: true, force: true });
+    res.json({ ok: true });
+  } catch (err) {
+    if (err.code === 'ENOENT') return res.status(404).json({ error: 'El archivo no existe' });
+    res.status(500).json({ error: 'Error interno al borrar' });
+  }
+});
 
-    // Indicar al navegador que es una descarga de archivo
-    res.attachment(`${name}_backup.zip`);
+apiRouter.post('/files/:name/folder', async (req, res) => {
+  const state = servers[req.params.name];
+  if (!state) return res.status(404).json({ error: 'Servidor no encontrado' });
 
-    archive.on('error', function (err) {
+  const { path: relativePath } = req.query;
+  const { folderName } = req.body;
+  if (!relativePath || !folderName) return res.status(400).json({ error: 'Faltan parámetros' });
+
+  const targetPath = resolveSafePath(state.cfg.dir, path.join(relativePath, folderName));
+  if (!targetPath) return res.status(403).json({ error: 'Acceso denegado' });
+
+  try {
+    await fs.promises.mkdir(targetPath);
+    res.json({ ok: true });
+  } catch (err) {
+    if (err.code === 'EEXIST') return res.status(400).json({ error: 'La carpeta ya existe' });
+    res.status(500).json({ error: 'Error interno al crear la carpeta' });
+  }
+});
+
+apiRouter.post('/files/:name/file', async (req, res) => {
+  const state = servers[req.params.name];
+  if (!state) return res.status(404).json({ error: 'Servidor no encontrado' });
+
+  const { path: relativePath } = req.query;
+  const { fileName } = req.body;
+  if (!relativePath || !fileName) return res.status(400).json({ error: 'Faltan parámetros' });
+
+  const targetPath = resolveSafePath(state.cfg.dir, path.join(relativePath, fileName));
+  if (!targetPath) return res.status(403).json({ error: 'Acceso denegado' });
+
+  if (fs.existsSync(targetPath)) return res.status(400).json({ error: 'El archivo ya existe' });
+
+  try {
+    await fs.promises.writeFile(targetPath, '', 'utf8');
+    res.json({ ok: true });
+  } catch {
+    res.status(500).json({ error: 'Error interno al crear el archivo' });
+  }
+});
+
+apiRouter.post('/files/:name/upload', upload.single('file'), async (req, res) => {
+  const state = servers[req.params.name];
+  if (!state) return res.status(404).json({ error: 'Servidor no encontrado' });
+  if (!req.file) return res.status(400).json({ error: 'No se envió ningún archivo' });
+
+  const relativePath = req.query.path || '/';
+  const targetPath = resolveSafePath(state.cfg.dir, path.join(relativePath, req.file.originalname));
+
+  if (!targetPath) {
+    await fs.promises.unlink(req.file.path).catch(() => {});
+    return res.status(403).json({ error: 'Acceso denegado' });
+  }
+
+  try {
+    await fs.promises.copyFile(req.file.path, targetPath);
+    await fs.promises.unlink(req.file.path);
+    res.json({ ok: true });
+  } catch (err) {
+    await fs.promises.unlink(req.file.path).catch(() => {});
+    console.error('Error subiendo archivo:', err);
+    res.status(500).json({ error: 'Error interno al procesar el archivo' });
+  }
+});
+
+apiRouter.get('/files/:name/download', async (req, res) => {
+  const state = servers[req.params.name];
+  if (!state) return res.status(404).json({ error: 'Servidor no encontrado' });
+
+  const relativePath = req.query.path || '/';
+  const targetPath = resolveSafePath(state.cfg.dir, relativePath);
+  if (!targetPath) return res.status(403).json({ error: 'Acceso denegado' });
+
+  try {
+    const stats = await fs.promises.stat(targetPath);
+    if (stats.isDirectory()) return res.status(400).json({ error: 'La ruta es una carpeta' });
+    res.download(targetPath, path.basename(targetPath));
+  } catch {
+    res.status(500).json({ error: 'Error interno al descargar el archivo' });
+  }
+});
+
+// ── Backups ───────────────────────────────────────────────────────────────────
+
+apiRouter.get('/backup/:name', async (req, res) => {
+  const state = servers[req.params.name];
+  if (!state) return res.status(404).json({ error: 'Servidor no encontrado' });
+
+  try {
+    const archive = archiver('zip', { zlib: { level: 9 } });
+
+    res.attachment(`${req.params.name}_backup.zip`);
+
+    archive.on('error', (err) => {
       console.error('Error en archiver:', err);
-      if (!res.headersSent) {
-        res.status(500).send({ error: err.message });
-      }
+      if (!res.headersSent) res.status(500).send({ error: err.message });
     });
 
-    // Conectar el flujo del archivo comprimido directamente a la respuesta HTTP
     archive.pipe(res);
-
-    // Comprimir todos los archivos dentro del directorio base del servidor
-    // false significa que no cree un subdirectorio extra con el nombre de la carpeta
     archive.directory(state.cfg.dir, false);
-
     await archive.finalize();
-  } catch (error) {
-    console.error('Error inicializando backup:', error);
-    if (!res.headersSent) {
-      res.status(500).json({ error: 'Error interno al inicializar backup' });
-    }
+  } catch (err) {
+    if (!res.headersSent) res.status(500).json({ error: 'Error interno al crear el backup' });
   }
 });
 
 apiRouter.post('/backup/:name/local', async (req, res) => {
-  refreshServers();
-  const { name } = req.params;
-  const state = servers[name];
+  const state = servers[req.params.name];
+  if (!state) return res.status(404).json({ error: 'Servidor no encontrado' });
 
-  //se hará backup del world del servidor
   const worldPath = path.join(state.cfg.dir, 'world');
-
-  if (!state) {
-    return res.status(404).json({ error: 'Servidor no encontrado' });
-  }
 
   try {
     const backupDir = path.join(state.cfg.dir, 'backups');
-
-    // Asegurarse de que el directorio backups exista
     await fs.promises.mkdir(backupDir, { recursive: true });
 
-    // Generar el nombre con la fecha
-    const now = new Date();
-    const dateStr = now.toISOString()
-      .replace(/\..+/, '')
-      .replace(/:/g, '-');
+    const dateStr = new Date().toISOString().replace(/\..+/, '').replace(/:/g, '-');
     const filename = `world_backup_${dateStr}.zip`;
     const outputPath = path.join(backupDir, filename);
 
-    // Creamos un stream de escritura al archivo destino
     const output = fs.createWriteStream(outputPath);
-    const archive = archiver('zip', {
-      zlib: { level: 9 }
-    });
+    const archive = archiver('zip', { zlib: { level: 9 } });
 
-    // Promesa que espera a que archive termine para responder
     const archiveEnded = new Promise((resolve, reject) => {
       output.on('close', resolve);
       archive.on('error', reject);
     });
 
     archive.pipe(output);
-    // Ignore the backups folder itself to avoid recursion or huge files
-    archive.glob('**/*', {
-      cwd: worldPath,
-      ignore: ['backups/**']
-    });
-
+    archive.glob('**/*', { cwd: worldPath, ignore: ['backups/**'] });
     await archive.finalize();
     await archiveEnded;
 
     res.json({ ok: true, filename });
-  } catch (error) {
-    console.error('Error creando backup local:', error);
+  } catch (err) {
+    console.error('Error creando backup local:', err);
     res.status(500).json({ error: 'Error interno guardando backup local' });
-  }
-});
-
-apiRouter.delete('/files/:name/content', async (req, res) => {
-  refreshServers();
-  const { name } = req.params;
-  const state = servers[name];
-
-  if (!state) {
-    return res.status(404).json({ error: 'Servidor no encontrado' });
-  }
-
-  const relativePath = req.query.path;
-
-  if (!relativePath) {
-    return res.status(400).json({ error: 'Falta proveer el parámetro path' });
-  }
-
-  const targetPath = path.join(state.cfg.dir, relativePath);
-
-  // Verificamos protección Anti-Path Traversal (No dejamos que borren cosas fuera de su servidor)
-  // Además, evitamos que borren el directorio raíz del servidor por completo.
-  if (!targetPath.startsWith(state.cfg.dir) || targetPath === state.cfg.dir) {
-    return res.status(403).json({ error: 'Acceso denegado a esta ruta' });
-  }
-
-  try {
-    // fs.promises.rm con recursive borra tanto archivos como carpetas llenas
-    await fs.promises.rm(targetPath, { recursive: true, force: true });
-    res.json({ ok: true });
-  } catch (error) {
-    console.error('Error borrando archivo/carpeta:', error);
-    if (error.code === 'ENOENT') {
-      return res.status(404).json({ error: 'El archivo o carpeta no existe' });
-    }
-    res.status(500).json({ error: 'Error interno al borrar el archivo/carpeta' });
-  }
-});
-
-apiRouter.post('/files/:name/folder', async (req, res) => {
-  refreshServers();
-  const { name } = req.params;
-  const state = servers[name];
-
-  if (!state) return res.status(404).json({ error: 'Servidor no encontrado' });
-
-  const relativePath = req.query.path;
-  const { folderName } = req.body;
-
-  if (!relativePath || !folderName) {
-    return res.status(400).json({ error: 'Faltan parámetros' });
-  }
-
-  const targetPath = path.join(state.cfg.dir, relativePath, folderName);
-
-  if (!targetPath.startsWith(state.cfg.dir)) {
-    return res.status(403).json({ error: 'Acceso denegado a esta ruta' });
-  }
-
-  try {
-    await fs.promises.mkdir(targetPath);
-    res.json({ ok: true });
-  } catch (error) {
-    console.error('Error creando carpeta:', error);
-    if (error.code === 'EEXIST') {
-      return res.status(400).json({ error: 'La carpeta ya existe' });
-    }
-    res.status(500).json({ error: 'Error interno al crear la carpeta' });
-  }
-});
-
-apiRouter.post('/files/:name/file', async (req, res) => {
-  refreshServers();
-  const { name } = req.params;
-  const state = servers[name];
-
-  if (!state) return res.status(404).json({ error: 'Servidor no encontrado' });
-
-  const relativePath = req.query.path;
-  const { fileName } = req.body;
-
-  if (!relativePath || !fileName) {
-    return res.status(400).json({ error: 'Faltan parámetros' });
-  }
-
-  const targetPath = path.join(state.cfg.dir, relativePath, fileName);
-
-  if (!targetPath.startsWith(state.cfg.dir)) {
-    return res.status(403).json({ error: 'Acceso denegado a esta ruta' });
-  }
-
-  try {
-    // Si ya existe, evitamos sobrescribirlo con este endpoint
-    if (fs.existsSync(targetPath)) {
-      return res.status(400).json({ error: 'El archivo ya existe' });
-    }
-    // Creamos archivo vacío
-    await fs.promises.writeFile(targetPath, '', 'utf8');
-    res.json({ ok: true });
-  } catch (error) {
-    console.error('Error creando archivo:', error);
-    res.status(500).json({ error: 'Error interno al crear el archivo' });
-  }
-});
-
-apiRouter.post('/files/:name/upload', upload.single('file'), async (req, res) => {
-  refreshServers();
-  const { name } = req.params;
-  const state = servers[name];
-
-  if (!state) return res.status(404).json({ error: 'Servidor no encontrado' });
-
-  // Si no llega archivo
-  if (!req.file) {
-    return res.status(400).json({ error: 'No se envió ningún archivo' });
-  }
-
-  const relativePath = req.query.path || '/';
-
-  // Destino original dentro del servidor
-  const targetPath = path.join(state.cfg.dir, relativePath, req.file.originalname);
-
-  // Verificamos path traversal
-  if (!targetPath.startsWith(state.cfg.dir)) {
-    // Limpiamos la basura si trataba de hackearnos
-    await fs.promises.unlink(req.file.path).catch(() => { });
-    return res.status(403).json({ error: 'Acceso denegado a esta ruta' });
-  }
-
-  try {
-    // Si queremos sobreescribir, usamos rename. Sino tendríamos que validar. Aquí sobreescribiremos por default en subidas
-    // `rename` de `fs.promises` a veces falla entre discos diferentes en Windows (p. ej. temp en C:\ y server en D:\).
-    // Lo más seguro es usar copyFile y luego unlink.
-    await fs.promises.copyFile(req.file.path, targetPath);
-    await fs.promises.unlink(req.file.path);
-
-    res.json({ ok: true });
-  } catch (error) {
-    console.error('Error guardando archivo subido:', error);
-    await fs.promises.unlink(req.file.path).catch(() => { }); // Limpiar temp si falla
-    res.status(500).json({ error: 'Error interno al procesar el archivo subido' });
-  }
-});
-
-apiRouter.get('/files/:name/download', async (req, res) => {
-  refreshServers();
-  const { name } = req.params;
-  const state = servers[name];
-
-  if (!state) return res.status(404).json({ error: 'Servidor no encontrado' });
-
-  const relativePath = req.query.path || '/';
-  const targetPath = path.join(state.cfg.dir, relativePath);
-
-  if (!targetPath.startsWith(state.cfg.dir)) {
-    return res.status(403).json({ error: 'Acceso denegado a esta ruta' });
-  }
-
-  try {
-    const stats = await fs.promises.stat(targetPath);
-    if (stats.isDirectory()) {
-      return res.status(400).json({ error: 'La ruta especificada no es un archivo' });
-    }
-
-    res.download(targetPath, path.basename(targetPath));
-  } catch (error) {
-    console.error('Error descargando archivo:', error);
-    res.status(500).json({ error: 'Error interno al descargar el archivo' });
-  }
-});
-
-apiRouter.get('/files/:name', async (req, res) => {
-  refreshServers();
-  const { name } = req.params;
-  const state = servers[name];
-
-  if (!state) {
-    return res.status(404).json({ error: 'Servidor no encontrado' });
-  }
-
-  // Obtenemos el path local dentro del servidor, por defecto '/'
-  const relativePath = req.query.path || '/';
-
-  // Construimos la ruta segura para evitar ataques de transversión de directorios (path traversal)
-  // ej: path.join elimina los "../" peligrosos si intentan salir del servidor
-  // En windows y linux esto funciona un poco distinto, resolve lo asegura.
-  const targetPath = path.join(state.cfg.dir, relativePath);
-
-  // Verificamos que al final la ruta a la que se accede sigue dentro de la carpeta del servidor
-  if (!targetPath.startsWith(state.cfg.dir)) {
-    return res.status(403).json({ error: 'Acceso denegado a esta ruta' });
-  }
-
-  try {
-    // Leemos el directorio con la versión de promesas de fs
-    // { withFileTypes: true } hace que nos devuelva objetos donde podemos ver si es archivo o carpeta
-    const items = await fs.promises.readdir(targetPath, { withFileTypes: true });
-
-    // Mapeamos los datos para enviarlos limpios al cliente
-    const resultItems = items.map(item => ({
-      name: item.name,
-      isDirectory: item.isDirectory(),
-    }));
-
-    // Ordenamos la lista: primero carpetas, luego archivos alfabéticamente
-    resultItems.sort((a, b) => {
-      if (a.isDirectory === b.isDirectory) {
-        return a.name.localeCompare(b.name);
-      }
-      return a.isDirectory ? -1 : 1;
-    });
-
-    res.json({ ok: true, currentPath: relativePath, items: resultItems });
-  } catch (error) {
-    console.error('Error leyendo archivos:', error);
-    if (error.code === 'ENOENT') {
-      return res.status(404).json({ error: 'La ruta no existe' });
-    } else if (error.code === 'ENOTDIR') {
-      return res.status(400).json({ error: 'La ruta especificada no es una carpeta' });
-    }
-    res.status(500).json({ error: 'Error interno al leer los archivos' });
   }
 });
 
 app.use('/api', apiRouter);
 
-// --- Servir frontend ---
+// --- Servir frontend en producción ---
 app.use('/', express.static(path.join(__dirname, '..', 'frontend')));
 
-// Socket.IO
+// --- Socket.IO ---
 const httpServer = http.createServer(app);
 const io = new Server(httpServer, {
-  cors: { origin: 'http://localhost:5173', methods: ['GET', 'POST'], credentials: true }
+  cors: { origin: CORS_ORIGIN, methods: ['GET', 'POST'], credentials: true },
 });
 
-// Validar JWT en Socket.IO
 io.use((socket, next) => {
   const token = socket.handshake.auth.token;
   if (!token) return next(new Error('Token no proporcionado'));
@@ -731,10 +579,9 @@ io.use((socket, next) => {
 });
 
 io.on('connection', socket => {
-  console.log('Socket conectado:', socket.id, 'Usuario:', socket.username);
+  console.log(`Socket conectado: ${socket.id} (${socket.username})`);
 
   socket.on('join', (serverName) => {
-    refreshServers();
     const state = servers[serverName];
     if (!state) return socket.emit('error_msg', `Servidor desconocido: ${serverName}`);
     socket.join(serverName);
@@ -742,13 +589,14 @@ io.on('connection', socket => {
   });
 
   socket.on('command', ({ server: serverName, command }) => {
-    refreshServers();
     const state = servers[serverName];
     if (!state) return socket.emit('cmd_error', { server: serverName, error: 'Servidor desconocido' });
+
     if (!state.process || state.process.killed) {
       state.commandQueue.push(command);
       return socket.emit('cmd_queued', { server: serverName, command });
     }
+
     if (state.process.stdin) {
       state.process.stdin.write(command + '\n');
       socket.emit('cmd_sent', { server: serverName, command });
@@ -759,6 +607,6 @@ io.on('connection', socket => {
   });
 });
 
-// --- Iniciar servidor ---
-const PORT = 4000;
-httpServer.listen(PORT, () => console.log(`Servidor backend escuchando en http://localhost:${PORT}`));
+// --- Iniciar ---
+const PORT = process.env.PORT || 4000;
+httpServer.listen(PORT, () => console.log(`Backend escuchando en http://localhost:${PORT}`));

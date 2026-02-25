@@ -1,27 +1,12 @@
-// App.jsx
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 
+import { API_BASE, fetchWithToken } from "./lib/api.js";
 import LoginForm from "./components/LoginForm.jsx";
 import Home from "./pages/Home.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
 import ServerDetailPage from "./pages/ServerDetailPage.jsx";
 import Navbar from "./components/Navbar.jsx";
-
-// Helper para hacer fetch con token JWT
-async function fetchWithToken(url, options = {}) {
-  const token = localStorage.getItem('authToken');
-  const headers = {
-    ...options.headers,
-    'Content-Type': 'application/json',
-  };
-
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-
-  return fetch(url, { ...options, headers });
-}
 
 // ─────────────────────────────────────────────────────────────
 // Focus Trap hook – mantiene el foco dentro del modal (WCAG 2.1.2)
@@ -38,7 +23,6 @@ function useFocusTrap(active) {
     const first = focusable[0];
     const last = focusable[focusable.length - 1];
 
-    // Mover el foco al primer elemento del modal al abrirse
     first?.focus();
 
     const handleKeyDown = (e) => {
@@ -46,17 +30,9 @@ function useFocusTrap(active) {
       if (focusable.length === 0) { e.preventDefault(); return; }
 
       if (e.shiftKey) {
-        // Shift+Tab: si estamos en el primero → saltar al último
-        if (document.activeElement === first) {
-          e.preventDefault();
-          last?.focus();
-        }
+        if (document.activeElement === first) { e.preventDefault(); last?.focus(); }
       } else {
-        // Tab: si estamos en el último → saltar al primero
-        if (document.activeElement === last) {
-          e.preventDefault();
-          first?.focus();
-        }
+        if (document.activeElement === last) { e.preventDefault(); first?.focus(); }
       }
     };
 
@@ -72,27 +48,24 @@ export default function App() {
   const [servers, setServers] = useState({});
   const [darkMode, setDarkMode] = useState(() => {
     const saved = localStorage.getItem('darkMode');
-    return saved ? JSON.parse(saved) : true; // Por defecto dark mode
+    return saved ? JSON.parse(saved) : true;
   });
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  // Ref al botón que abre el modal (para devolver el foco al cerrar)
   const logoutBtnRef = useRef(null);
 
-  // Guardar darkMode en localStorage cuando cambia
   useEffect(() => {
     localStorage.setItem('darkMode', JSON.stringify(darkMode));
   }, [darkMode]);
 
-  const toggleDarkMode = () => setDarkMode((prev) => !prev);
+  const toggleDarkMode = () => setDarkMode(prev => !prev);
 
   const fetchStatus = async () => {
     try {
-      const res = await fetchWithToken("http://localhost:4000/api/status");
+      const res = await fetchWithToken(`${API_BASE}/api/status`);
       if (res.ok) {
-        const data = await res.json();
-        setServers(data);
+        setServers(await res.json());
       } else if (res.status === 401) {
         setLoggedIn(false);
       }
@@ -101,22 +74,17 @@ export default function App() {
     }
   };
 
-  // Verificar sesión al cargar la app
+  // Verificar sesión al cargar
   useEffect(() => {
     const verifySession = async () => {
       try {
         const token = localStorage.getItem('authToken');
-        if (!token) {
-          setLoading(false);
-          return;
-        }
+        if (!token) { setLoading(false); return; }
 
-        const res = await fetchWithToken("http://localhost:4000/api/me");
+        const res = await fetchWithToken(`${API_BASE}/api/me`);
         if (res.ok) {
           const data = await res.json();
-          if (data.loggedIn) {
-            setLoggedIn(true);
-          }
+          if (data.loggedIn) setLoggedIn(true);
         } else {
           localStorage.removeItem('authToken');
         }
@@ -131,15 +99,14 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (loggedIn) {
-      fetchStatus();
-      const interval = setInterval(fetchStatus, 4000);
-      return () => clearInterval(interval);
-    }
+    if (!loggedIn) return;
+    fetchStatus();
+    const interval = setInterval(fetchStatus, 4000);
+    return () => clearInterval(interval);
   }, [loggedIn]);
 
   const startServer = async (name) => {
-    await fetchWithToken("http://localhost:4000/api/start", {
+    await fetchWithToken(`${API_BASE}/api/start`, {
       method: "POST",
       body: JSON.stringify({ name }),
     });
@@ -147,7 +114,7 @@ export default function App() {
   };
 
   const stopServer = async (name) => {
-    await fetchWithToken("http://localhost:4000/api/stop", {
+    await fetchWithToken(`${API_BASE}/api/stop`, {
       method: "POST",
       body: JSON.stringify({ name }),
     });
@@ -156,7 +123,7 @@ export default function App() {
 
   const sendCommand = async (name, command) => {
     try {
-      await fetchWithToken("http://localhost:4000/api/command", {
+      await fetchWithToken(`${API_BASE}/api/command`, {
         method: "POST",
         body: JSON.stringify({ name, command }),
       });
@@ -165,67 +132,46 @@ export default function App() {
     }
   };
 
-  const openLogoutModal = () => {
-    setShowLogoutConfirm(true);
-  };
+  const openLogoutModal = () => setShowLogoutConfirm(true);
 
   const closeLogoutModal = useCallback(() => {
     setShowLogoutConfirm(false);
-    // Devolver el foco al botón que abrió el modal (WCAG 2.4.3)
     logoutBtnRef.current?.focus();
   }, []);
 
   const logout = async () => {
-    await fetchWithToken("http://localhost:4000/logout", {
-      method: "POST",
-    });
+    await fetchWithToken(`${API_BASE}/logout`, { method: "POST" });
     localStorage.removeItem('authToken');
-    // Resetear la URL a / para que el nuevo Router empiece desde la raíz
-    // y los assets no fallen al resolver rutas relativas (WCAG no relevante, bug fix)
     window.history.replaceState(null, '', '/');
     setLoggedIn(false);
     setShowLogoutConfirm(false);
   };
 
-  // Cerrar modal con Escape (WCAG 2.1.2 – No Keyboard Trap)
+  // Cerrar modal con Escape (WCAG 2.1.2)
   useEffect(() => {
     if (!showLogoutConfirm) return;
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape') closeLogoutModal();
-    };
+    const handleKeyDown = (e) => { if (e.key === 'Escape') closeLogoutModal(); };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [showLogoutConfirm, closeLogoutModal]);
 
-  // Focus trap para el modal
   const modalRef = useFocusTrap(showLogoutConfirm);
 
-  // Spinner de carga inicial
   if (loading) {
     return (
-      <div
-        className={`flex items-center justify-center min-h-screen ${darkMode
-          ? "bg-gradient-to-br from-purple-900 via-gray-900 to-black"
-          : "bg-gradient-to-br from-purple-100 via-white to-purple-50"
-          }`}
-      >
-        {/* role="status" + aria-label para lectores de pantalla (WCAG 4.1.3) */}
-        <div
-          className="text-center"
-          role="status"
-          aria-label="Verificando sesión, por favor espere"
-        >
+      <div className={`flex items-center justify-center min-h-screen ${darkMode
+        ? "bg-gradient-to-br from-purple-900 via-gray-900 to-black"
+        : "bg-gradient-to-br from-purple-100 via-white to-purple-50"
+      }`}>
+        <div className="text-center" role="status" aria-label="Verificando sesión, por favor espere">
           <div
             className={`w-12 h-12 border-4 rounded-full animate-spin mx-auto mb-4 ${darkMode
               ? "border-purple-500 border-t-transparent"
               : "border-purple-400 border-t-transparent"
-              }`}
+            }`}
             aria-hidden="true"
           />
-          <p
-            className={`text-lg font-semibold ${darkMode ? "text-purple-300" : "text-purple-600"
-              }`}
-          >
+          <p className={`text-lg font-semibold ${darkMode ? "text-purple-300" : "text-purple-600"}`}>
             Verificando sesión...
           </p>
         </div>
@@ -279,13 +225,11 @@ export default function App() {
           {/* Modal de confirmación de logout */}
           {showLogoutConfirm && (
             <>
-              {/* Overlay con aria-hidden (el foco no puede entrar aquí) */}
               <div
                 className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
                 aria-hidden="true"
                 onClick={closeLogoutModal}
               />
-              {/* El modal queda encima del overlay, con focus trap activado */}
               <div
                 ref={modalRef}
                 role="dialog"
