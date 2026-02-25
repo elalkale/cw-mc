@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { FaMoon, FaSignOutAlt } from "react-icons/fa";
-import { Menu, X, Home, LayoutDashboard, Settings as SettingsIcon } from "lucide-react";
+import { Menu, X, Home, LayoutDashboard, Settings as SettingsIcon, BookOpen } from "lucide-react";
 import Settings from "./Settings.jsx";
 
 export default function Navbar({ darkMode, toggleDarkMode, onLogout, logoutBtnRef }) {
@@ -72,6 +72,9 @@ export default function Navbar({ darkMode, toggleDarkMode, onLogout, logoutBtnRe
             </Link>
             <Link to="/dashboard" className={navLinkClass("/dashboard")}>
               <span className="inline-flex items-center gap-1.5"><LayoutDashboard size={15} aria-hidden="true" /> Dashboard</span>
+            </Link>
+            <Link to="/catalog" className={navLinkClass("/catalog")}>
+              <span className="inline-flex items-center gap-1.5"><BookOpen size={15} aria-hidden="true" /> Catálogo</span>
             </Link>
           </nav>
 
@@ -177,6 +180,16 @@ export default function Navbar({ darkMode, toggleDarkMode, onLogout, logoutBtnRe
               tabIndex={isOpen ? 0 : -1}
             >
               <span className="inline-flex items-center gap-2"><LayoutDashboard size={16} aria-hidden="true" /> Dashboard</span>
+            </Link>
+            <Link
+              to="/catalog"
+              className={`px-4 py-2 rounded-lg transition ${darkMode
+                ? "text-gray-300 hover:text-purple-300 hover:bg-purple-500/20"
+                : "text-gray-600 hover:text-purple-600 hover:bg-purple-200/30"
+                }`}
+              tabIndex={isOpen ? 0 : -1}
+            >
+              <span className="inline-flex items-center gap-2"><BookOpen size={16} aria-hidden="true" /> Catálogo</span>
             </Link>
           </nav>
         </div>

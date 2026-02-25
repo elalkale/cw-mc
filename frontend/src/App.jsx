@@ -6,6 +6,8 @@ import LoginForm from "./components/LoginForm.jsx";
 import Home from "./pages/Home.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
 import ServerDetailPage from "./pages/ServerDetailPage.jsx";
+import ServerCatalog from "./pages/ServerCatalog.jsx";
+import ModpackDetail from "./pages/ModpackDetail.jsx";
 import Navbar from "./components/Navbar.jsx";
 
 // ─────────────────────────────────────────────────────────────
@@ -218,6 +220,8 @@ export default function App() {
                   />
                 }
               />
+              <Route path="catalog" element={<ServerCatalog darkMode={darkMode} />} />
+              <Route path="catalog/:modId" element={<ModpackDetail darkMode={darkMode} />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </main>

@@ -13,11 +13,12 @@ import archiver from 'archiver';
 import multer from 'multer';
 import os from 'os';
 
-dotenv.config();
-
-// --- __dirname en ESM ---
+// --- __dirname en ESM (antes de dotenv para poder calcular la ruta del .env) ---
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Siempre carga el .env desde la raíz del proyecto, sin importar desde dónde se ejecute el proceso
+dotenv.config({ path: path.join(__dirname, '../.env') });
 
 // --- Express ---
 const app = express();
@@ -552,6 +553,88 @@ apiRouter.post('/backup/:name/local', async (req, res) => {
   } catch (err) {
     console.error('Error creando backup local:', err);
     res.status(500).json({ error: 'Error interno guardando backup local' });
+  }
+});
+
+// ── CurseForge proxy ──────────────────────────────────────────────────────────
+// El API key queda en el backend y nunca se expone al cliente.
+
+const CF_BASE = 'https://api.curseforge.com/v1';
+
+function cfHeaders() {
+  return {
+    'Accept': 'application/json',
+    'Content-Type': 'application/json',
+    'x-api-key': process.env.CURSEFORGE_API_TOKEN || '',
+  };
+}
+
+// POST /api/curseforge/mods  { modIds: [1,2,...] }
+// Devuelve datos de varios mods a la vez (para las tarjetas del catálogo)
+apiRouter.post('/curseforge/mods', async (req, res) => {
+  const { modIds } = req.body;
+  if (!Array.isArray(modIds) || modIds.length === 0) {
+    return res.status(400).json({ error: 'modIds requeridos' });
+  }
+  if (!process.env.CURSEFORGE_API_TOKEN) {
+    return res.json({ data: [] }); // sin key → devolver vacío sin romper
+  }
+  try {
+    const resp = await fetch(`${CF_BASE}/mods`, {
+      method: 'POST',
+      headers: cfHeaders(),
+      body: JSON.stringify({ modIds }),
+    });
+    const data = await resp.json();
+    res.json(data);
+  } catch (err) {
+    console.error('CurseForge batch error:', err);
+    res.status(500).json({ error: 'Error consultando CurseForge' });
+  }
+});
+
+// GET /api/curseforge/mod/:modId
+// Datos completos de un único mod (logo, screenshots, summary…)
+apiRouter.get('/curseforge/mod/:modId', async (req, res) => {
+  if (!process.env.CURSEFORGE_API_TOKEN) return res.json({ data: null });
+  try {
+    const resp = await fetch(`${CF_BASE}/mods/${req.params.modId}`, { headers: cfHeaders() });
+    const data = await resp.json();
+    res.json(data);
+  } catch (err) {
+    console.error('CurseForge single mod error:', err);
+    res.status(500).json({ error: 'Error consultando CurseForge' });
+  }
+});
+
+// GET /api/curseforge/mod/:modId/description
+// Devuelve la descripción HTML del mod
+apiRouter.get('/curseforge/mod/:modId/description', async (req, res) => {
+  if (!process.env.CURSEFORGE_API_TOKEN) return res.json({ data: '' });
+  try {
+    const resp = await fetch(`${CF_BASE}/mods/${req.params.modId}/description`, { headers: cfHeaders() });
+    const data = await resp.json();
+    res.json(data);
+  } catch (err) {
+    console.error('CurseForge description error:', err);
+    res.status(500).json({ error: 'Error consultando CurseForge' });
+  }
+});
+
+// GET /api/curseforge/mod/:modId/file/:fileId/download-url
+// Devuelve la URL de descarga del server pack
+apiRouter.get('/curseforge/mod/:modId/file/:fileId/download-url', async (req, res) => {
+  if (!process.env.CURSEFORGE_API_TOKEN) return res.json({ data: null });
+  try {
+    const resp = await fetch(
+      `${CF_BASE}/mods/${req.params.modId}/files/${req.params.fileId}/download-url`,
+      { headers: cfHeaders() }
+    );
+    const data = await resp.json();
+    res.json(data);
+  } catch (err) {
+    console.error('CurseForge download-url error:', err);
+    res.status(500).json({ error: 'Error consultando CurseForge' });
   }
 });
 
