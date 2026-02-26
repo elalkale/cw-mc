@@ -1,92 +1,238 @@
-# Cube Watcher (anteriormente cw-mc)
+# Cube Watcher
 
-**Cube Watcher** es un panel web moderno para administrar servidores de Minecraft, desarrollado con React, Vite y Express. Diseñado meticulosamente para ofrecer una experiencia de usuario premium, permite iniciar, detener y monitorear servidores de Minecraft desde una interfaz accesible, responsiva y estéticamente pulida.
-
-## ✨ Características Principales
-
-- **Control Total:** Inicia, detén y monitoriza múltiples servidores desde un solo panel.
-- **Logs en Tiempo Real:** Consola integrada alimentada por WebSockets para ver la salida del servidor al instante.
-- **Comandos Rápidos e Interactivos:** Envía comandos directamente al servidor desde la interfaz web, con botones de acceso rápido para acciones comunes (tiempo, clima, op).
-- **Diseño Premium:** Interfaz de usuario rica construida con Tailwind CSS, ofreciendo transiciones suaves, efectos glassmorphism, modo oscuro integrado y una paleta de colores cuidada en tonos púrpuras y rosados.
-- **Accesibilidad (WCAG 2.1 AA):**
-  - Navegación completa por teclado con indicadores de foco personalizados (`:focus-visible`).
-  - Soporte para lectores de pantalla mediante etiquetas ARIA dinámicas, `role="alert"`, `aria-live`, y `aria-hidden` en elementos decorativos.
-  - *Focus traps* en modales (como el diálogo de cierre de sesión) para evitar que el teclado escape del contexto.
-  - Respeto por preferencias del sistema operativo como `prefers-reduced-motion`.
-- **Iconografía Minimalista:** Uso de `lucide-react` para iconos limpios y consistentes en toda la aplicación.
+Panel web para administrar servidores de Minecraft. Desarrollado con React 19 + TypeScript en el frontend y Express 5 + Node.js en el backend, con comunicación en tiempo real mediante Socket.io.
 
 ---
 
-## 🏗️ Estructura del Proyecto
+## Características
 
-```text
-├── backend/           # Backend Express para autenticación y control de servidores
-│   └── index.js       # API REST y WebSocket para control y logs
-├── frontend/          # Frontend React + Vite
-│   ├── src/
-│   │   ├── App.jsx            # Enrutador principal, Focus Traps y estado global
-│   │   ├── main.jsx           # Punto de entrada de React
-│   │   ├── index.css          # Estilos globales y reglas de Accesibilidad (WCAG)
-│   │   ├── assets/            # Imágenes, logo y recursos visuales
-│   │   ├── components/
-│   │   │   ├── LoginForm.jsx      # Autenticación segura e interfaz responsiva
-│   │   │   ├── Navbar.jsx         # Menú de navegación accesible y toggle de Modo Oscuro
-│   │   │   ├── ServerCard.jsx     # Tarjeta de servidor en vista Grid/Lista
-│   │   │   ├── ServerDetail.jsx   # Vista intrínseca de monitorización y consola
-│   │   │   ├── LogsConsole.jsx    # Componente dedicado para el streaming de terminal
-│   │   ├── pages/
-│   │   │   ├── Home.jsx           # Landing page de presentación
-│   │   │   ├── Dashboard.jsx      # Panel principal con selector de vistas
-│   │   │   ├── ServerDetailPage.jsx # Contenedor detallado con Comandos Rápidos
-│   ├── public/           # Archivos estáticos
-│   ├── vite.config.js    # Configuración de compilación de Vite
-│   ├── eslint.config.js  # Reglas de estilo ES
-├── servers/            # Directorios de los servidores Minecraft locales
-├── package.json        # Dependencias NPM y scripts de ejecución
-└── README.md           # Esta documentación
+- **Control de servidores** — inicia, detiene, para forzosamente y monitoriza múltiples servidores desde un solo panel.
+- **Logs en tiempo real** — consola integrada alimentada por WebSockets; múltiples clientes comparten la misma sala de logs.
+- **Comandos interactivos** — envía comandos al servidor desde la interfaz, con accesos rápidos para las acciones más comunes.
+- **Catálogo de modpacks** — integración con la API de CurseForge para explorar, filtrar e instalar server packs directamente desde el panel.
+- **Instalación desatendida** — descarga, extrae y ejecuta el `install.bat`/`install.sh` del modpack en segundo plano, mostrando el progreso en tiempo real.
+- **Explorador de archivos** — navega, edita, sube, descarga y elimina archivos del servidor desde el navegador.
+- **Gestión de mods** — lista, activa/desactiva, sube y elimina mods `.jar`; identificación automática mediante fingerprint CurseForge (MurmurHash2).
+- **Backup y clonado** — genera copias `.zip` del servidor y crea clones con un clic.
+- **Modo oscuro** — paleta en tonos púrpuras, con transiciones suaves y soporte de `prefers-reduced-motion`.
+- **Accesibilidad (WCAG 2.1 AA)** — navegación por teclado, `aria-current`, `role="dialog"`, `aria-live`, focus traps en modales y contraste adecuado en toda la interfaz.
+- **Multiplataforma** — compatible con Windows y Linux/macOS sin necesidad de Docker.
+
+---
+
+## Estructura del proyecto
+
+```
+├── backend/
+│   ├── index.js                  # Punto de entrada: Express, Socket.io y montaje de routers
+│   ├── config/
+│   │   ├── app.js                # loadConfig / saveConfig y rutas del proyecto
+│   │   └── env.js                # Carga y validación de variables de entorno
+│   ├── middleware/
+│   │   ├── auth.js               # Middleware JWT (verifyToken)
+│   │   └── errorHandler.js       # Handler global de errores y 404
+│   ├── routes/
+│   │   ├── auth.js               # POST /login, POST /logout, GET /api/me
+│   │   ├── servers.js            # Control completo de servidores (start/stop/backup/clone...)
+│   │   ├── files.js              # CRUD de archivos y directorios del servidor
+│   │   ├── mods.js               # Enable/disable/upload/delete mods
+│   │   ├── curseforge.js         # Proxy de la API de CurseForge
+│   │   └── settings.js           # GET/POST de configuración global
+│   ├── services/
+│   │   ├── serverManager.js      # Estado global de servidores, ping, refresh
+│   │   └── installManager.js     # Instalación de server packs en background
+│   └── utils/
+│       ├── curseforge.js         # Cabeceras CF y cálculo de fingerprint (MurmurHash2)
+│       ├── pathValidator.js      # resolveSafePath con realpath anti path-traversal
+│       └── platform.js           # killProcess, getStartCommand, extractZip cross-platform
+│
+├── frontend/
+│   ├── vite.config.ts
+│   ├── tsconfig.json
+│   └── src/
+│       ├── App.tsx               # Enrutador principal, focus trap, estado global
+│       ├── main.tsx
+│       ├── types/index.ts        # Tipos TypeScript compartidos
+│       ├── constants/index.ts    # LOADER_NAMES, LOADER_COLORS, intervalos, etc.
+│       ├── hooks/
+│       │   └── useFocusTrap.ts
+│       ├── lib/
+│       │   └── api.ts            # fetchWithToken, token helpers
+│       ├── components/
+│       │   ├── common/           # Modal.tsx, ErrorBoundary.tsx
+│       │   ├── server/           # Componentes de servidor
+│       │   ├── modpack/          # Componentes de catálogo y modpack
+│       │   ├── ui/               # Navbar, LoginForm, FilterSelect, etc.
+│       │   ├── ServerCard.tsx
+│       │   ├── ServerDetail.tsx
+│       │   ├── LogsConsole.tsx
+│       │   ├── FileExplorer.tsx
+│       │   ├── ModCatalog.tsx
+│       │   ├── VersionsTab.tsx
+│       │   ├── InstallModal.tsx
+│       │   ├── DescriptionHTML.tsx   # Renderizado HTML con DOMPurify
+│       │   └── ...
+│       └── pages/
+│           ├── Dashboard.tsx
+│           ├── ServerDetailPage.tsx
+│           ├── ServerCatalog.tsx
+│           ├── ModpackDetail.tsx
+│           └── ...
+│
+├── servers/                      # Directorios de los servidores Minecraft
+├── package.json
+├── start-dev.bat                 # Arranque en Windows
+├── start-dev.sh                  # Arranque en Linux / macOS
+└── .env                          # Variables de entorno (no incluido en el repositorio)
 ```
 
 ---
 
-## 🛠️ Tecnologías Utilizadas
+## Tecnologías
 
-- **Frontend:** React 19, Vite, Tailwind CSS v3, React Router DOM v7, Socket.io-client, Lucide React.
-- **Backend:** Node.js, Express 5, Socket.io, express-session, bcrypt.
-- **Integración Minecraft:** `minecraft-server-util` para ping y recolección de metadata de servidores locales.
-
----
-
-## 📖 Componentes Destacados
-
-### Frontend
-- **App.jsx**: Orquesta la sesión del usuario de forma reactiva comprobando JWTs y maneja el **Focus Trap** vital para el modal accesible de *Cierre de Sesión*.
-- **Navbar.jsx**: Totalmente responsivo. En escritorio muestra navegación en línea; en móvil colapsa a un cajón deslizante operado mediante teclado y soporte `Escape`.
-- **ServerCard.jsx / ServerDetail.jsx**: Interfaces interactivas para leer información estructurada (jugadores online, ping, estado PID del proceso Node hijo) y ver la transmisión de consola web en vivo de cada servidor individual.
-
-### Backend (`backend/index.js`)
-Actúa como capa middleware entre el cliente web y los demonios de Java nativos o servidores bedrock. 
-- Emplea `child_process.spawn`.
-- Gestiona la asignación de puertos dinámicamente según subcarpetas dentro del directorio `servers/`.
-- Ofrece endpoints robustos de API y una sesión controlada por token JWT.
+| Capa | Tecnologías |
+|---|---|
+| Frontend | React 19, TypeScript 5, Vite 7, Tailwind CSS 3, React Router 7, Socket.io-client, Lucide React |
+| Backend | Node.js, Express 5, Socket.io 4, jsonwebtoken, bcrypt, express-rate-limit, unzipper |
+| Seguridad | JWT + bcrypt, rate limiting en login, DOMPurify (XSS), path traversal bloqueado con `realpath` |
+| Minecraft | `minecraft-server-util` (ping), CurseForge API (catálogo, fingerprint MurmurHash2) |
 
 ---
 
-## 🔌 Referencia Rápida de Endpoint API
+## Primeros pasos
 
-*El backend se expone en `localhost:4000` y requiere el encabezado `Authorization: Bearer <token>`.*
+### 1. Instalar dependencias
 
-| Método | Ruta | Propósito |
-| :--- | :--- | :--- |
-| **POST** | `/login` | Retorna Token de Sesión. |
-| **POST** | `/logout` | Destruye la sesión actual expuesta. |
-| **GET** | `/api/status` | Polling en tiempo real del estado de procesos del SO y pings de servidores. |
-| **GET** | `/api/server-icon/:name` | Resuelve y entrega dinámicamente el `server-icon.png` desde la subcarpeta local. |
-| **POST** | `/api/start` | Levanta el demonio en subproceso (`spawn`). |
-| **POST** | `/api/stop` | Finaliza el proceso (`stdin: stop`). |
-| **POST** | `/api/command` | Transfiere comandos tipo consola a `stdin`. Si servidor apagado, encola en array interno. |
+```bash
+npm install
+```
 
-*La capa de WebSocket sincroniza los logs bidireccionalmente permitiendo múltiples clientes ver las mismas líneas en la consola del frontend simultáneamente reconectando a salas (`socket.join`).*
+### 2. Configurar variables de entorno
+
+Copia `.env.example` a `.env` y edita los valores:
+
+```env
+PORT=4000
+CORS_ORIGIN=http://localhost:5173
+JWT_SECRET=cambia_esto_por_un_secreto_largo
+ADMIN_USER=admin
+ADMIN_PASS=cambia_esta_contraseña
+CURSEFORGE_API_TOKEN=tu_api_key_de_curseforge
+```
+
+> En producción, `JWT_SECRET` y `ADMIN_PASS` no pueden ser los valores por defecto; el servidor rechazará el arranque.
+
+### 3. Arrancar en desarrollo
+
+**Windows:**
+```bat
+start-dev.bat
+```
+
+**Linux / macOS:**
+```bash
+chmod +x start-dev.sh && ./start-dev.sh
+```
+
+O directamente con npm:
+```bash
+npm run dev
+```
+
+Esto levanta el backend en `http://localhost:4000` y el frontend en `http://localhost:5173` de forma simultánea.
+
+### 4. Build de producción
+
+```bash
+npm run build
+```
+
+Genera `dist/` en la raíz. El backend lo sirve automáticamente cuando `NODE_ENV=production`.
+
+### 5. Arrancar en producción
+
+```bash
+npm start
+# equivale a: NODE_ENV=production node backend/index.js
+```
 
 ---
 
-> Desarrollado con ❤️ prestando atención al código limpio, la seguridad y estándares modernos de Accesibilidad para todos los usuarios.
+## Scripts disponibles
+
+| Script | Descripción |
+|---|---|
+| `npm run dev` | Backend + frontend en modo desarrollo (concurrently) |
+| `npm run build` | Compila TypeScript y genera el bundle de producción |
+| `npm start` | Arranca solo el backend en modo producción |
+| `npm run typecheck` | Comprobación de tipos TypeScript sin emitir archivos |
+| `npm run lint` | ESLint sobre `frontend/src` |
+
+---
+
+## API — Referencia rápida
+
+Todas las rutas bajo `/api` requieren el header `Authorization: Bearer <token>` salvo `/login` y `/logout`.
+
+### Autenticación
+| Método | Ruta | Descripción |
+|---|---|---|
+| POST | `/login` | Devuelve JWT de sesión |
+| POST | `/logout` | Invalida la sesión |
+| GET | `/api/me` | Datos del usuario autenticado |
+
+### Servidores
+| Método | Ruta | Descripción |
+|---|---|---|
+| GET | `/api/status` | Estado de todos los servidores (proceso + ping MC) |
+| GET | `/api/logs/:name` | Histórico de logs de un servidor |
+| POST | `/api/start` | Inicia el servidor |
+| POST | `/api/stop` | Detiene el servidor (`stop` vía stdin) |
+| POST | `/api/force-stop` | Mata el proceso forzosamente |
+| POST | `/api/command` | Envía comando al stdin (o encola si está parado) |
+| GET | `/api/backup/:name` | Descarga backup `.zip` del servidor |
+| POST | `/api/backup/:name/local` | Guarda backup local |
+| POST | `/api/servers/:name/clone` | Clona el servidor |
+| DELETE | `/api/servers/:name` | Elimina el servidor |
+| POST | `/api/servers/upload` | Sube un server pack `.zip` para instalar |
+| POST | `/api/install` | Instala server pack desde CurseForge |
+| GET | `/api/install/:installId` | Estado de una instalación en curso |
+
+### Archivos
+| Método | Ruta | Descripción |
+|---|---|---|
+| GET | `/api/files/:name` | Lista archivos y directorios |
+| GET | `/api/files/:name/content` | Lee el contenido de un archivo |
+| PUT | `/api/files/:name/content` | Sobreescribe el contenido de un archivo |
+| POST | `/api/files/:name/file` | Sube un archivo |
+| POST | `/api/files/:name/folder` | Crea una carpeta |
+| DELETE | `/api/files/:name/content` | Elimina un archivo o carpeta |
+| GET | `/api/files/:name/download` | Descarga un archivo |
+
+### Mods
+| Método | Ruta | Descripción |
+|---|---|---|
+| GET | `/api/servers/:name/mods` | Lista mods del servidor |
+| POST | `/api/servers/:name/mods/upload` | Sube un mod `.jar` |
+| POST | `/api/servers/:name/mods/toggle` | Activa / desactiva un mod |
+| DELETE | `/api/servers/:name/mods/:filename` | Elimina un mod |
+| POST | `/api/servers/:name/mods/identify` | Identifica mods mediante fingerprint CurseForge |
+| POST | `/api/servers/:name/mods/install` | Instala un mod desde CurseForge |
+
+### CurseForge
+| Método | Ruta | Descripción |
+|---|---|---|
+| GET | `/api/curseforge/mods/search` | Búsqueda de modpacks |
+| GET | `/api/curseforge/mod/:modId` | Detalles de un mod |
+| GET | `/api/curseforge/mod/:modId/description` | Descripción HTML del mod |
+| GET | `/api/curseforge/mod/:modId/files` | Lista de archivos/versiones |
+| GET | `/api/curseforge/mod/:modId/file/:fileId/download-url` | URL de descarga de un archivo |
+
+### Icono de servidor (público, sin auth)
+| Método | Ruta | Descripción |
+|---|---|---|
+| GET | `/api/server-icon/:name` | Devuelve `server-icon.png` del servidor |
+
+---
+
+> Desarrollado con atención al código limpio, la seguridad y los estándares modernos de accesibilidad.

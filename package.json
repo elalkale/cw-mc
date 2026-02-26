@@ -4,10 +4,14 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "lint": "eslint .",
-    "preview": "vite preview"
+    "dev": "concurrently -n backend,frontend -c cyan,magenta \"node backend/index.js\" \"vite --config frontend/vite.config.ts\"",
+    "backend": "node backend/index.js",
+    "frontend": "vite --config frontend/vite.config.ts",
+    "build": "vite build --config frontend/vite.config.ts",
+    "typecheck": "tsc -p frontend/tsconfig.json --noEmit",
+    "start": "NODE_ENV=production node backend/index.js",
+    "lint": "eslint frontend/src --ext .ts,.tsx",
+    "preview": "vite preview --config frontend/vite.config.ts"
   },
   "dependencies": {
     "archiver": "^7.0.1",
@@ -15,8 +19,10 @@
     "bcrypt": "^6.0.0",
     "body-parser": "^2.2.0",
     "cors": "^2.8.5",
+    "dompurify": "^3.3.1",
     "dotenv": "^17.3.1",
     "express": "^5.1.0",
+    "express-rate-limit": "^8.2.1",
     "express-session": "^1.18.2",
     "fetch-cookie": "^3.1.0",
     "jsonwebtoken": "^9.0.3",
@@ -35,16 +41,20 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.36.0",
+    "@types/dompurify": "^3.0.5",
+    "@types/node": "^25.3.1",
     "@types/react": "^19.1.13",
     "@types/react-dom": "^19.1.9",
     "@vitejs/plugin-react": "^5.0.3",
     "autoprefixer": "^10.4.20",
+    "concurrently": "^9.2.1",
     "eslint": "^9.36.0",
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.20",
     "globals": "^16.4.0",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17",
+    "typescript": "^5.9.3",
     "vite": "^7.1.7"
   }
 }
