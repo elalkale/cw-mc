@@ -6,6 +6,7 @@ import { POLL_INTERVAL_MS, INSTALL_POLL_MS, API } from "./constants";
 import { ServersMap, InstallState } from "./types";
 import { useFocusTrap } from "./hooks/useFocusTrap";
 
+import { LogOut, X } from "lucide-react";
 import LoginForm    from "./components/LoginForm";
 import Navbar       from "./components/Navbar";
 import Home         from "./pages/Home";
@@ -273,40 +274,62 @@ export default function App() {
           {showLogoutConfirm && (
             <>
               <div
-                className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+                className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50"
                 aria-hidden="true"
                 onClick={closeLogoutModal}
               />
-              <div
-                ref={modalRef as React.RefObject<HTMLDivElement>}
-                role="dialog"
-                aria-modal="true"
-                aria-labelledby="logout-confirm-title"
-                className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none"
-              >
+              <div className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none px-4">
                 <div
-                  className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 w-80 pointer-events-auto"
+                  ref={modalRef as React.RefObject<HTMLDivElement>}
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="logout-confirm-title"
+                  className={`w-full max-w-sm rounded-2xl shadow-2xl border pointer-events-auto ${darkMode
+                    ? 'bg-gradient-to-br from-gray-800 to-gray-900 border-purple-500/30'
+                    : 'bg-white border-purple-200/70'
+                  }`}
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <h3
-                    id="logout-confirm-title"
-                    className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4"
-                  >
-                    ¿Seguro que quieres cerrar sesión?
-                  </h3>
-                  <div className="flex justify-end gap-3">
+                  {/* Header */}
+                  <div className={`flex items-center justify-between px-5 py-4 border-b ${darkMode ? 'border-gray-700/60' : 'border-gray-200'}`}>
+                    <div className="flex items-center gap-2">
+                      <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${darkMode ? 'bg-red-500/15' : 'bg-red-100'}`}>
+                        <LogOut size={14} className="text-red-400" aria-hidden="true" />
+                      </div>
+                      <h3 id="logout-confirm-title" className={`font-semibold text-sm ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                        Cerrar sesión
+                      </h3>
+                    </div>
                     <button
                       onClick={closeLogoutModal}
-                      className="px-4 py-2 rounded-lg bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200"
                       aria-label="Cancelar, permanecer en la sesión"
+                      className={`p-1.5 rounded-lg transition-colors ${darkMode ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-100 text-gray-500'}`}
+                    >
+                      <X size={15} aria-hidden="true" />
+                    </button>
+                  </div>
+
+                  {/* Body */}
+                  <div className="px-5 py-4">
+                    <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                      ¿Seguro que quieres cerrar sesión?
+                    </p>
+                  </div>
+
+                  {/* Footer */}
+                  <div className={`flex justify-end gap-2 px-5 py-4 border-t ${darkMode ? 'border-gray-700/60' : 'border-gray-200'}`}>
+                    <button
+                      onClick={closeLogoutModal}
+                      className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors ${darkMode ? 'bg-gray-700 hover:bg-gray-600 text-gray-300' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'}`}
                     >
                       Cancelar
                     </button>
                     <button
                       onClick={logout}
-                      className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white font-semibold"
                       aria-label="Confirmar cierre de sesión"
+                      className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white transition-all shadow-md shadow-red-900/20"
                     >
+                      <LogOut size={14} aria-hidden="true" />
                       Cerrar sesión
                     </button>
                   </div>
