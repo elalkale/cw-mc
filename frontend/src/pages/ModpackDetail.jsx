@@ -304,7 +304,9 @@ export default function ModpackDetail({ darkMode, onInstallStart, onInstallClear
                 ))}
               </div>
             ) : description ? (
-              <DescriptionHTML html={description} darkMode={darkMode} />
+              <div className={`rounded-xl p-4 ${darkMode ? 'bg-gray-800/60 border border-gray-700/40' : 'bg-purple-50 border border-purple-200'}`}>
+                <DescriptionHTML html={description} darkMode={darkMode} />
+              </div>
             ) : (
               <p className={`text-sm ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>Sin descripción disponible.</p>
             )

@@ -12,7 +12,7 @@ const DescriptionHTML = memo(function DescriptionHTML({ html, darkMode }) {
   return (
     <div
       ref={ref}
-      className={`prose prose-sm max-w-none ${darkMode ? 'prose-invert' : ''} [&_img]:rounded-lg [&_img]:max-w-full [&_a]:text-purple-400`}
+      className={`prose prose-sm max-w-none ${darkMode ? 'prose-invert [&_*:not(a)]:!text-gray-200' : ''} [&_img]:rounded-lg [&_img]:max-w-full [&_a]:!text-purple-400`}
     />
   );
 });

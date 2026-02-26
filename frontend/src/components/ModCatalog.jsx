@@ -295,7 +295,9 @@ function ModDetailView({ mod, darkMode, installing, installed, installError, onI
             loadingDesc ? (
               <div className={`h-32 rounded-xl animate-pulse ${darkMode ? 'bg-gray-700/50' : 'bg-gray-100'}`} />
             ) : description ? (
-              <DescriptionHTML html={description} darkMode={darkMode} />
+              <div className={`rounded-xl p-4 ${darkMode ? 'bg-gray-800/60 border border-gray-700/40' : 'bg-purple-50 border border-purple-200'}`}>
+                <DescriptionHTML html={description} darkMode={darkMode} />
+              </div>
             ) : (
               <p className={`text-sm ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>
                 Sin descripción disponible.
@@ -398,6 +400,7 @@ export default function ModCatalog({ server, data, darkMode, onClose, onModInsta
   const [installErrors, setInstallErrors] = useState({});   // modId → mensaje
   const [installedIds, setInstalledIds] = useState(new Set());
   const [selectedMod, setSelectedMod] = useState(null);     // mod object for detail view
+  const [depsNotice, setDepsNotice] = useState(null);        // { deps, failedDeps } | null
 
   const debounceRef = useRef(null);
 
@@ -446,6 +449,7 @@ export default function ModCatalog({ server, data, darkMode, onClose, onModInsta
 
     setInstalling({ modId: mod.id, fileId });
     setInstallErrors(prev => { const n = { ...prev }; delete n[mod.id]; return n; });
+    setDepsNotice(null);
     try {
       const res = await fetchWithToken(
         `${API_BASE}/api/servers/${encodeURIComponent(server)}/mods/install`,
@@ -453,7 +457,10 @@ export default function ModCatalog({ server, data, darkMode, onClose, onModInsta
       );
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || 'Error al instalar');
-      setInstalledIds(prev => new Set([...prev, mod.id]));
+      setInstalledIds(prev => new Set([...prev, mod.id, ...(d.deps || []).map(dep => dep.modId)]));
+      if ((d.deps?.length ?? 0) > 0 || (d.failedDeps?.length ?? 0) > 0) {
+        setDepsNotice({ deps: d.deps || [], failedDeps: d.failedDeps || [] });
+      }
       onModInstalled?.();
     } catch (err) {
       setInstallErrors(prev => ({ ...prev, [mod.id]: err.message }));
@@ -560,6 +567,27 @@ export default function ModCatalog({ server, data, darkMode, onClose, onModInsta
                   {SORT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               </div>
+
+              {/* ── Aviso dependencias instaladas ── */}
+              {depsNotice && (
+                <div className={`mx-4 mt-3 rounded-xl px-4 py-3 flex items-start gap-3 border ${darkMode ? 'bg-indigo-500/10 border-indigo-500/25' : 'bg-indigo-50 border-indigo-200'}`}>
+                  <div className="flex-1 min-w-0">
+                    {depsNotice.deps.length > 0 && (
+                      <p className={`text-xs font-medium ${darkMode ? 'text-indigo-300' : 'text-indigo-700'}`}>
+                        Dependencias instaladas automáticamente: {depsNotice.deps.map(d => d.name).join(', ')}
+                      </p>
+                    )}
+                    {depsNotice.failedDeps.length > 0 && (
+                      <p className={`text-xs mt-0.5 ${darkMode ? 'text-red-400' : 'text-red-600'}`}>
+                        No se pudieron instalar: {depsNotice.failedDeps.map(d => `mod ${d.modId}`).join(', ')}
+                      </p>
+                    )}
+                  </div>
+                  <button onClick={() => setDepsNotice(null)} className={`p-0.5 rounded flex-shrink-0 ${darkMode ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'}`}>
+                    <X size={13} />
+                  </button>
+                </div>
+              )}
 
               {/* ── Contenido ── */}
               <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">

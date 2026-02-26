@@ -1142,71 +1142,139 @@ apiRouter.post('/servers/:name/mods/toggle', async (req, res) => {
   res.json({ ok: true, newFilename });
 });
 
+// DELETE /api/servers/:name/mods/:filename — elimina un mod del servidor
+apiRouter.delete('/servers/:name/mods/:filename', async (req, res) => {
+  const serverName = decodeURIComponent(req.params.name);
+  const state = servers[serverName];
+  if (!state) return res.status(404).json({ error: 'Servidor no encontrado' });
+  const filename = decodeURIComponent(req.params.filename);
+  const modsDir = path.resolve(path.join(state.cfg.dir, 'mods'));
+  const filePath = path.resolve(path.join(modsDir, filename));
+  if (!filePath.startsWith(modsDir + path.sep) && filePath !== modsDir)
+    return res.status(400).json({ error: 'Ruta inválida' });
+  if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Archivo no encontrado' });
+  await fs.promises.unlink(filePath);
+  // Limpiar también la entrada en mods.json si existe
+  const modsJsonPath = path.join(state.cfg.dir, 'mods.json');
+  if (fs.existsSync(modsJsonPath)) {
+    const modsJson = JSON.parse(fs.readFileSync(modsJsonPath, 'utf-8'));
+    const baseName = filename.replace(/\.disabled$/, '');
+    if (modsJson.mods?.[baseName]) {
+      delete modsJson.mods[baseName];
+      fs.writeFileSync(modsJsonPath, JSON.stringify(modsJson, null, 2));
+    }
+  }
+  res.json({ ok: true });
+});
+
 // POST /api/servers/:name/mods/install — descarga e instala un mod .jar desde CurseForge
+// - Elimina versiones anteriores del mismo modId (sin duplicados)
+// - Instala dependencias requeridas automáticamente (relationType === 3)
 apiRouter.post('/servers/:name/mods/install', async (req, res) => {
   const serverName = decodeURIComponent(req.params.name);
   const state = servers[serverName];
   if (!state) return res.status(404).json({ error: 'Servidor no encontrado' });
   const { modId, fileId } = req.body;
   if (!modId || !fileId) return res.status(400).json({ error: 'Faltan parámetros: modId y fileId' });
-  try {
-    // 1. Obtener URL de descarga
-    const urlResp = await fetch(
-      `${CF_BASE}/mods/${modId}/files/${fileId}/download-url`,
-      { headers: cfHeaders() }
-    );
-    const urlData = await urlResp.json();
-    const downloadUrl = urlData?.data;
-    if (!downloadUrl) throw new Error('No se pudo obtener la URL de descarga');
 
-    // 2. Descargar el .jar
+  const modsDir = path.join(state.cfg.dir, 'mods');
+  if (!fs.existsSync(modsDir)) fs.mkdirSync(modsDir, { recursive: true });
+
+  const modsJsonPath = path.join(state.cfg.dir, 'mods.json');
+  const modsJson = fs.existsSync(modsJsonPath)
+    ? JSON.parse(await fs.promises.readFile(modsJsonPath, 'utf-8'))
+    : { identified_at: null, mods: {} };
+  if (!modsJson.mods) modsJson.mods = {};
+
+  // Descarga un archivo de CurseForge, elimina versiones antiguas del mismo modId
+  const downloadMod = async (mId, fId) => {
+    // Eliminar versión anterior del mismo modId
+    // Busca en mods.json por modId y elimina ambas variantes (.jar y .jar.disabled)
+    for (const [fname, meta] of Object.entries(modsJson.mods)) {
+      if (meta.modId === Number(mId)) {
+        const base = fname.replace(/\.disabled$/, '');
+        for (const candidate of [base, base + '.disabled']) {
+          const p = path.join(modsDir, candidate);
+          if (fs.existsSync(p)) await fs.promises.unlink(p).catch(() => {});
+        }
+        delete modsJson.mods[fname];
+        break;
+      }
+    }
+    const urlResp = await fetch(`${CF_BASE}/mods/${mId}/files/${fId}/download-url`, { headers: cfHeaders() });
+    const downloadUrl = (await urlResp.json())?.data;
+    if (!downloadUrl) throw new Error('No se pudo obtener URL de descarga');
     const dlResp = await fetch(downloadUrl);
     if (!dlResp.ok) throw new Error(`Error descargando: ${dlResp.status}`);
-
-    // Determinar nombre del archivo desde la URL
     const rawName = decodeURIComponent(downloadUrl.split('/').pop().split('?')[0]);
     const filename = rawName.endsWith('.jar') ? rawName : rawName + '.jar';
-
-    // 3. Guardar en mods/
-    const modsDir = path.join(state.cfg.dir, 'mods');
-    if (!fs.existsSync(modsDir)) fs.mkdirSync(modsDir, { recursive: true });
-    const destPath = path.join(modsDir, filename);
-    const dest = createWriteStream(destPath);
+    const dest = createWriteStream(path.join(modsDir, filename));
     await new Promise((resolve, reject) => {
       Readable.fromWeb(dlResp.body).pipe(dest);
-      dest.on('finish', resolve);
-      dest.on('error', reject);
+      dest.on('finish', resolve); dest.on('error', reject);
     });
+    return filename;
+  };
 
-    // Actualizar mods.json si existe
-    const modsJsonPath = path.join(state.cfg.dir, 'mods.json');
-    if (fs.existsSync(modsJsonPath) && process.env.CURSEFORGE_API_TOKEN) {
+  try {
+    // 1. Detalles del archivo principal (gameVersions + dependencias)
+    const fileDetailsResp = await fetch(`${CF_BASE}/mods/${modId}/files/${fileId}`, { headers: cfHeaders() });
+    const fileDetails = (await fileDetailsResp.json())?.data || {};
+    const gameVersions = fileDetails.gameVersions || [];
+    const mcVersion = gameVersions.find(v => /^\d+\.\d+/.test(v)) || '';
+    const loaderName = gameVersions.find(v => ['Forge', 'Fabric', 'Quilt', 'NeoForge'].includes(v));
+    const loaderTypeMap = { Forge: 1, Fabric: 4, Quilt: 5, NeoForge: 6 };
+    const loaderType = loaderTypeMap[loaderName] || 0;
+
+    // 2. Instalar mod principal
+    const filename = await downloadMod(modId, fileId);
+
+    // 3. Actualizar mods.json para el mod principal
+    const modResp = await fetch(`${CF_BASE}/mods/${modId}`, { headers: cfHeaders() }).catch(() => null);
+    const mod = modResp ? (await modResp.json())?.data : null;
+    modsJson.mods[filename] = {
+      recognized: true, modId: Number(modId), fileId: Number(fileId), gameVersions,
+      cfName: mod?.name || null, slug: mod?.slug || null,
+      logo: mod?.logo?.thumbnailUrl || mod?.logo?.url || null,
+      summary: mod?.summary || null, downloadCount: mod?.downloadCount || null,
+    };
+
+    // 4. Instalar dependencias requeridas
+    const deps = [];
+    const failedDeps = [];
+    const requiredDeps = (fileDetails.dependencies || []).filter(d => d.relationType === 3);
+
+    for (const dep of requiredDeps) {
+      // Saltar si ya está instalado
+      if (Object.values(modsJson.mods).some(m => m.modId === dep.modId)) continue;
       try {
-        const modsJson = JSON.parse(await fs.promises.readFile(modsJsonPath, 'utf-8'));
-        const modResp = await fetch(`${CF_BASE}/mods/${modId}`, { headers: cfHeaders() });
-        const mod = (await modResp.json())?.data;
-        const fileVersions = [...new Set(
-          (mod?.latestFilesIndexes || [])
-            .filter(idx => idx.fileId === Number(fileId))
-            .map(idx => idx.gameVersion)
-            .filter(Boolean)
-        )];
-        modsJson.mods[filename] = {
-          recognized: true,
-          modId: Number(modId),
-          fileId: Number(fileId),
-          gameVersions: fileVersions,
-          cfName: mod?.name || null,
-          slug: mod?.slug || null,
-          logo: mod?.logo?.thumbnailUrl || mod?.logo?.url || null,
-          summary: mod?.summary || null,
-          downloadCount: mod?.downloadCount || null,
+        const params = new URLSearchParams({ pageSize: '10' });
+        if (mcVersion) params.set('gameVersion', mcVersion);
+        if (loaderType) params.set('modLoaderType', String(loaderType));
+        const depFilesResp = await fetch(`${CF_BASE}/mods/${dep.modId}/files?${params}`, { headers: cfHeaders() });
+        const depFiles = (await depFilesResp.json())?.data || [];
+        if (!depFiles.length) { failedDeps.push({ modId: dep.modId, error: 'Sin versión compatible' }); continue; }
+
+        const depFileId = depFiles[0].id;
+        const depFilename = await downloadMod(dep.modId, depFileId);
+
+        const depModResp = await fetch(`${CF_BASE}/mods/${dep.modId}`, { headers: cfHeaders() }).catch(() => null);
+        const depMod = depModResp ? (await depModResp.json())?.data : null;
+        modsJson.mods[depFilename] = {
+          recognized: true, modId: Number(dep.modId), fileId: Number(depFileId),
+          gameVersions: depFiles[0].gameVersions || [], cfName: depMod?.name || null,
+          slug: depMod?.slug || null, logo: depMod?.logo?.thumbnailUrl || depMod?.logo?.url || null,
+          summary: depMod?.summary || null, downloadCount: depMod?.downloadCount || null,
         };
-        await fs.promises.writeFile(modsJsonPath, JSON.stringify(modsJson, null, 2), 'utf-8');
-      } catch { /* no romper la respuesta si falla la actualización */ }
+        deps.push({ modId: dep.modId, name: depMod?.name || depFilename });
+      } catch (depErr) {
+        console.error(`Error instalando dependencia ${dep.modId}:`, depErr.message);
+        failedDeps.push({ modId: dep.modId, error: depErr.message });
+      }
     }
 
-    res.json({ ok: true, filename });
+    await fs.promises.writeFile(modsJsonPath, JSON.stringify(modsJson, null, 2), 'utf-8');
+    res.json({ ok: true, filename, deps, failedDeps });
   } catch (err) {
     console.error('Error instalando mod:', err);
     res.status(500).json({ error: err.message });

@@ -4,7 +4,7 @@ import { io } from 'socket.io-client';
 import {
   Play, Square, PowerOff, HardDrive, Download,
   Activity, Wifi, Tag, Terminal, Send, Copy, Trash2, X, FolderOpen,
-  Package, Search, RefreshCw, Upload, HelpCircle,
+  Package, Search, RefreshCw, Upload, HelpCircle, CheckCircle2, AlertCircle,
 } from 'lucide-react';
 import { API_BASE, fetchWithToken } from '../lib/api.js';
 import FileExplorer from './FileExplorer.jsx';
@@ -26,6 +26,10 @@ export default function ServerDetail({ server, data, onStart, onStop, onForceSto
   const [cloning, setCloning] = useState(false);
   const [cloneError, setCloneError] = useState('');
 
+  // ── Notificación (reemplaza alert()) ─────────────────────────────────────
+  const [notification, setNotification] = useState(null); // { type:'success'|'error', title, message }
+  const notify = (type, title, message) => setNotification({ type, title, message });
+
   // ── Delete ───────────────────────────────────────────────────────────────
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -38,6 +42,8 @@ export default function ServerDetail({ server, data, onStart, onStop, onForceSto
   const [mods, setMods] = useState([]);
   const [loadingMods, setLoadingMods] = useState(false);
   const [togglingMod, setTogglingMod] = useState(null);
+  const [deletingMod, setDeletingMod] = useState(null);
+  const [modToDelete, setModToDelete] = useState(null);
   const [modSearch, setModSearch] = useState('');
   const [uploadingMods, setUploadingMods] = useState(false);
   const [showModCatalog, setShowModCatalog] = useState(false);
@@ -89,7 +95,7 @@ export default function ServerDetail({ server, data, onStart, onStop, onForceSto
       URL.revokeObjectURL(url); document.body.removeChild(a);
     } catch (err) {
       console.error('Error backup:', err);
-      alert('Error: ' + err.message);
+      notify('error', 'Error al descargar backup', err.message);
     } finally { setIsBackingUp(false); }
   };
 
@@ -139,10 +145,10 @@ export default function ServerDetail({ server, data, onStart, onStop, onForceSto
       );
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || 'Error al crear backup local');
-      alert(`Backup creado en la carpeta "backups":\n${d.filename}`);
+      notify('success', 'Backup creado', d.filename);
     } catch (err) {
       console.error('Error backup local:', err);
-      alert('Error: ' + err.message);
+      notify('error', 'Error al crear backup', err.message);
     } finally { setIsCreatingLocal(false); }
   };
 
@@ -195,7 +201,7 @@ export default function ServerDetail({ server, data, onStart, onStop, onForceSto
       fetchMods();
     } catch (err) {
       console.error(err);
-      alert('Error: ' + err.message);
+      notify('error', 'Error al subir mods', err.message);
     } finally {
       setUploadingMods(false);
     }
@@ -223,6 +229,23 @@ export default function ServerDetail({ server, data, onStart, onStop, onForceSto
       console.error(err);
     } finally {
       setTogglingMod(null);
+    }
+  };
+
+  const deleteMod = async (mod) => {
+    setDeletingMod(mod.filename);
+    try {
+      const res = await fetchWithToken(
+        `${API_BASE}/api/servers/${encodeURIComponent(server)}/mods/${encodeURIComponent(mod.filename)}`,
+        { method: 'DELETE' }
+      );
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error);
+      setMods(prev => prev.filter(m => m.filename !== mod.filename));
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setDeletingMod(null);
     }
   };
 
@@ -652,7 +675,7 @@ export default function ServerDetail({ server, data, onStart, onStop, onForceSto
                   {/* Toggle enable/disable */}
                   <button
                     onClick={() => toggleMod(mod)}
-                    disabled={togglingMod !== null}
+                    disabled={togglingMod !== null || deletingMod !== null}
                     aria-label={mod.enabled ? `Desactivar ${mod.name}` : `Activar ${mod.name}`}
                     className={`relative flex-shrink-0 w-11 h-6 rounded-full transition-colors duration-200 disabled:cursor-wait ${
                       mod.enabled
@@ -661,6 +684,25 @@ export default function ServerDetail({ server, data, onStart, onStop, onForceSto
                     }`}
                   >
                     <span className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-all duration-200 ${mod.enabled ? 'left-6' : 'left-1'} ${togglingMod === mod.filename ? 'opacity-60' : ''}`} />
+                  </button>
+
+                  {/* Borrar mod */}
+                  <button
+                    onClick={() => setModToDelete(mod)}
+                    disabled={togglingMod !== null || deletingMod !== null}
+                    aria-label={`Eliminar ${mod.name}`}
+                    className={`flex-shrink-0 p-1.5 rounded-lg transition-colors disabled:cursor-wait ${
+                      deletingMod === mod.filename
+                        ? 'opacity-50 cursor-wait'
+                        : darkMode
+                          ? 'text-gray-600 hover:text-red-400 hover:bg-red-500/10'
+                          : 'text-gray-300 hover:text-red-500 hover:bg-red-50'
+                    }`}
+                  >
+                    {deletingMod === mod.filename
+                      ? <span className="w-3.5 h-3.5 rounded-full border-2 border-t-transparent border-current animate-spin block" />
+                      : <Trash2 size={14} />
+                    }
                   </button>
                 </div>
               ))}
@@ -895,6 +937,102 @@ export default function ServerDetail({ server, data, onStart, onStop, onForceSto
                   className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-red-600 hover:bg-red-500 text-white transition-colors disabled:opacity-60"
                 >
                   {deleting ? <><span className="w-3.5 h-3.5 rounded-full border-2 border-t-transparent border-white animate-spin" />Eliminando...</> : <><Trash2 size={14} />Eliminar</>}
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ── Modal Eliminar Mod ───────────────────────────────────────────────── */}
+      {modToDelete && (
+        <>
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50" onClick={() => !deletingMod && setModToDelete(null)} />
+          <div className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none px-4">
+            <div
+              className={`w-full max-w-sm rounded-2xl shadow-2xl border pointer-events-auto ${darkMode
+                ? 'bg-gradient-to-br from-gray-800 to-gray-900 border-red-500/30'
+                : 'bg-white border-red-200/70'
+              }`}
+              onClick={e => e.stopPropagation()}
+            >
+              <div className={`flex items-center justify-between px-5 py-4 border-b ${darkMode ? 'border-gray-700/60' : 'border-gray-200'}`}>
+                <div className="flex items-center gap-2">
+                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${darkMode ? 'bg-red-500/15' : 'bg-red-100'}`}>
+                    <Trash2 size={14} className="text-red-400" />
+                  </div>
+                  <h3 className={`font-semibold text-sm ${darkMode ? 'text-white' : 'text-gray-900'}`}>Eliminar mod</h3>
+                </div>
+                <button onClick={() => !deletingMod && setModToDelete(null)} className={`p-1.5 rounded-lg transition-colors ${darkMode ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-100 text-gray-500'}`}>
+                  <X size={15} />
+                </button>
+              </div>
+              <div className="px-5 py-4">
+                <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                  ¿Eliminar <span className="font-semibold text-red-400">{modToDelete.name}</span>?
+                </p>
+                <p className={`text-xs mt-1.5 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                  El archivo <span className="font-mono">{modToDelete.filename}</span> se borrará permanentemente.
+                </p>
+              </div>
+              <div className={`flex justify-end gap-2 px-5 py-4 border-t ${darkMode ? 'border-gray-700/60' : 'border-gray-200'}`}>
+                <button
+                  onClick={() => setModToDelete(null)} disabled={!!deletingMod}
+                  className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors ${darkMode ? 'bg-gray-700 hover:bg-gray-600 text-gray-300' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'} disabled:opacity-50`}
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={() => deleteMod(modToDelete).then(() => setModToDelete(null))}
+                  disabled={!!deletingMod}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-red-600 hover:bg-red-500 text-white transition-colors disabled:opacity-60"
+                >
+                  {deletingMod ? <><span className="w-3.5 h-3.5 rounded-full border-2 border-t-transparent border-white animate-spin" />Eliminando...</> : <><Trash2 size={14} />Eliminar</>}
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+      {/* ── Modal Notificación ──────────────────────────────────────────────── */}
+      {notification && (
+        <>
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[60]" onClick={() => setNotification(null)} />
+          <div className="fixed inset-0 flex items-center justify-center z-[60] pointer-events-none px-4">
+            <div
+              className={`w-full max-w-sm rounded-2xl shadow-2xl border pointer-events-auto ${darkMode
+                ? `bg-gradient-to-br from-gray-800 to-gray-900 ${notification.type === 'error' ? 'border-red-500/30' : 'border-green-500/30'}`
+                : `bg-white ${notification.type === 'error' ? 'border-red-200/70' : 'border-green-200/70'}`
+              }`}
+              onClick={e => e.stopPropagation()}
+            >
+              <div className={`flex items-center justify-between px-5 py-4 border-b ${darkMode ? 'border-gray-700/60' : 'border-gray-200'}`}>
+                <div className="flex items-center gap-2">
+                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${
+                    notification.type === 'error'
+                      ? darkMode ? 'bg-red-500/15' : 'bg-red-100'
+                      : darkMode ? 'bg-green-500/15' : 'bg-green-100'
+                  }`}>
+                    {notification.type === 'error'
+                      ? <AlertCircle size={14} className="text-red-400" />
+                      : <CheckCircle2 size={14} className="text-green-400" />
+                    }
+                  </div>
+                  <h3 className={`font-semibold text-sm ${darkMode ? 'text-white' : 'text-gray-900'}`}>{notification.title}</h3>
+                </div>
+                <button onClick={() => setNotification(null)} className={`p-1.5 rounded-lg transition-colors ${darkMode ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-100 text-gray-500'}`}>
+                  <X size={15} />
+                </button>
+              </div>
+              <div className="px-5 py-4">
+                <p className={`text-sm font-mono break-all ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{notification.message}</p>
+              </div>
+              <div className={`flex justify-end px-5 py-4 border-t ${darkMode ? 'border-gray-700/60' : 'border-gray-200'}`}>
+                <button
+                  onClick={() => setNotification(null)}
+                  className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors ${darkMode ? 'bg-gray-700 hover:bg-gray-600 text-gray-300' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'}`}
+                >
+                  Cerrar
                 </button>
               </div>
             </div>

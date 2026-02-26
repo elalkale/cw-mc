@@ -43,6 +43,10 @@ const FileExplorer = ({ serverName, darkMode }) => {
   const [downloading, setDownloading] = useState(false);
   const [uploading, setUploading] = useState(false);
 
+  const [deleteConfirm, setDeleteConfirm]   = useState(null); // { name }
+  const [replaceConfirm, setReplaceConfirm] = useState(null); // { oldName, newName, file }
+  const [createPrompt, setCreatePrompt]     = useState(null); // { type, value, error }
+
   const fileInputRef = useRef(null);
   const replaceInputRef = useRef(null);
 
@@ -189,41 +193,42 @@ const FileExplorer = ({ serverName, darkMode }) => {
 
   // ── Reemplazar archivo ──────────────────────────────────────────────────────
 
-  const handleReplaceFile = async (e) => {
+  const handleReplaceFile = (e) => {
     const file = e.target.files[0];
+    e.target.value = null;
     if (!file) return;
+    setReplaceConfirm({ oldName: selectedFile, newName: file.name, file });
+  };
 
-    if (!window.confirm(`¿Reemplazar "${selectedFile}" con "${file.name}"?`)) {
-      e.target.value = null;
-      return;
-    }
-
+  const confirmReplace = () => {
+    const { file } = replaceConfirm;
+    setReplaceConfirm(null);
     const reader = new FileReader();
     reader.onloadend = async () => {
       const dataUrl = reader.result;
       setFileContent(dataUrl);
       await saveFile(dataUrl, selectedFile);
     };
-
     if (file.type.startsWith('image/')) {
       reader.readAsDataURL(file);
     } else {
       reader.readAsText(file);
     }
-
-    e.target.value = null;
   };
 
   // ── Borrar ──────────────────────────────────────────────────────────────────
 
-  const deleteItem = async (itemName, e) => {
+  const deleteItem = (itemName, e) => {
     e.stopPropagation();
-    if (!window.confirm(`¿Eliminar "${itemName}"?\n¡Esta acción no se puede deshacer!`)) return;
+    setDeleteConfirm({ name: itemName });
+  };
 
+  const confirmDelete = async () => {
+    const itemName = deleteConfirm.name;
+    setDeleteConfirm(null);
     const itemPath = joinPath(currentPath, itemName);
     setDeleting(true);
     setError(null);
-
     try {
       const res = await fetchWithToken(
         `${API_BASE}/api/files/${serverName}/content?path=${encodeURIComponent(itemPath)}`,
@@ -241,29 +246,27 @@ const FileExplorer = ({ serverName, darkMode }) => {
 
   // ── Crear carpeta / archivo ─────────────────────────────────────────────────
 
-  const createNewItem = async (type) => {
-    const label = type === 'folder' ? 'Nombre de la nueva carpeta:' : 'Nombre del nuevo archivo (ej. notas.txt):';
-    const itemName = window.prompt(label);
-    if (!itemName?.trim()) return;
-    if (itemName.includes('/') || itemName.includes('\\')) {
-      alert('El nombre no puede contener barras.');
-      return;
-    }
+  const createNewItem = (type) => {
+    setCreatePrompt({ type, value: '', error: '' });
+  };
 
+  const confirmCreate = async () => {
+    const { type, value } = createPrompt;
+    const itemName = value.trim();
+    if (!itemName) { setCreatePrompt(p => ({ ...p, error: 'El nombre no puede estar vacío.' })); return; }
+    if (itemName.includes('/') || itemName.includes('\\')) { setCreatePrompt(p => ({ ...p, error: 'El nombre no puede contener barras.' })); return; }
+    setCreatePrompt(null);
     setLoading(true);
     setError(null);
-
     try {
       const endpoint = type === 'folder'
         ? `${API_BASE}/api/files/${serverName}/folder?path=${encodeURIComponent(currentPath)}`
         : `${API_BASE}/api/files/${serverName}/file?path=${encodeURIComponent(currentPath)}`;
       const payloadKey = type === 'folder' ? 'folderName' : 'fileName';
-
       const res = await fetchWithToken(endpoint, {
         method: 'POST',
-        body: JSON.stringify({ [payloadKey]: itemName.trim() }),
+        body: JSON.stringify({ [payloadKey]: itemName }),
       });
-
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `Error al crear ${type}`);
       fetchFiles(currentPath);
@@ -455,6 +458,105 @@ const FileExplorer = ({ serverName, darkMode }) => {
           ))
         )}
       </div>
+
+      {/* ── Modal: Eliminar archivo/carpeta ──────────────────────────────────── */}
+      {deleteConfirm && (
+        <>
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50" onClick={() => !deleting && setDeleteConfirm(null)} />
+          <div className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none px-4 font-sans">
+            <div className={`w-full max-w-sm rounded-2xl shadow-2xl border pointer-events-auto ${darkMode ? 'bg-gradient-to-br from-gray-800 to-gray-900 border-red-500/30' : 'bg-white border-red-200/70'}`} onClick={e => e.stopPropagation()}>
+              <div className={`flex items-center justify-between px-5 py-4 border-b ${darkMode ? 'border-gray-700/60' : 'border-gray-200'}`}>
+                <div className="flex items-center gap-2">
+                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${darkMode ? 'bg-red-500/15' : 'bg-red-100'}`}>
+                    <Trash2 size={14} className="text-red-400" />
+                  </div>
+                  <h3 className={`font-semibold text-sm ${darkMode ? 'text-white' : 'text-gray-900'}`}>Eliminar</h3>
+                </div>
+                <button onClick={() => !deleting && setDeleteConfirm(null)} className={`p-1.5 rounded-lg transition-colors ${darkMode ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-100 text-gray-500'}`}><X size={15} /></button>
+              </div>
+              <div className="px-5 py-4">
+                <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>¿Eliminar <span className="font-semibold text-red-400 font-mono">{deleteConfirm.name}</span>?</p>
+                <p className={`text-xs mt-1.5 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Esta acción no se puede deshacer.</p>
+              </div>
+              <div className={`flex justify-end gap-2 px-5 py-4 border-t ${darkMode ? 'border-gray-700/60' : 'border-gray-200'}`}>
+                <button onClick={() => setDeleteConfirm(null)} disabled={deleting} className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors ${darkMode ? 'bg-gray-700 hover:bg-gray-600 text-gray-300' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'} disabled:opacity-50`}>Cancelar</button>
+                <button onClick={confirmDelete} disabled={deleting} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-red-600 hover:bg-red-500 text-white transition-colors disabled:opacity-60">
+                  {deleting ? <><span className="w-3.5 h-3.5 rounded-full border-2 border-t-transparent border-white animate-spin" />Eliminando...</> : <><Trash2 size={14} />Eliminar</>}
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ── Modal: Reemplazar archivo ─────────────────────────────────────────── */}
+      {replaceConfirm && (
+        <>
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50" onClick={() => setReplaceConfirm(null)} />
+          <div className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none px-4 font-sans">
+            <div className={`w-full max-w-sm rounded-2xl shadow-2xl border pointer-events-auto ${darkMode ? 'bg-gradient-to-br from-gray-800 to-gray-900 border-purple-500/30' : 'bg-white border-purple-200/70'}`} onClick={e => e.stopPropagation()}>
+              <div className={`flex items-center justify-between px-5 py-4 border-b ${darkMode ? 'border-gray-700/60' : 'border-gray-200'}`}>
+                <div className="flex items-center gap-2">
+                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${darkMode ? 'bg-purple-500/15' : 'bg-purple-100'}`}>
+                    <RefreshCw size={14} className="text-purple-400" />
+                  </div>
+                  <h3 className={`font-semibold text-sm ${darkMode ? 'text-white' : 'text-gray-900'}`}>Reemplazar archivo</h3>
+                </div>
+                <button onClick={() => setReplaceConfirm(null)} className={`p-1.5 rounded-lg transition-colors ${darkMode ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-100 text-gray-500'}`}><X size={15} /></button>
+              </div>
+              <div className="px-5 py-4">
+                <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>¿Reemplazar <span className="font-semibold text-purple-400 font-mono">{replaceConfirm.oldName}</span></p>
+                <p className={`text-sm mt-0.5 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>con <span className="font-semibold font-mono">{replaceConfirm.newName}</span>?</p>
+              </div>
+              <div className={`flex justify-end gap-2 px-5 py-4 border-t ${darkMode ? 'border-gray-700/60' : 'border-gray-200'}`}>
+                <button onClick={() => setReplaceConfirm(null)} className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors ${darkMode ? 'bg-gray-700 hover:bg-gray-600 text-gray-300' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'}`}>Cancelar</button>
+                <button onClick={confirmReplace} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-purple-600 hover:bg-purple-500 text-white transition-colors">
+                  <RefreshCw size={14} />Reemplazar
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ── Modal: Crear carpeta / archivo ────────────────────────────────────── */}
+      {createPrompt && (
+        <>
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50" onClick={() => setCreatePrompt(null)} />
+          <div className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none px-4 font-sans">
+            <div className={`w-full max-w-sm rounded-2xl shadow-2xl border pointer-events-auto ${darkMode ? 'bg-gradient-to-br from-gray-800 to-gray-900 border-purple-500/25' : 'bg-white border-purple-200/70'}`} onClick={e => e.stopPropagation()}>
+              <div className={`flex items-center justify-between px-5 py-4 border-b ${darkMode ? 'border-gray-700/60' : 'border-gray-200'}`}>
+                <div className="flex items-center gap-2">
+                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${darkMode ? 'bg-purple-500/15' : 'bg-purple-100'}`}>
+                    {createPrompt.type === 'folder' ? <FolderPlus size={14} className="text-purple-400" /> : <FilePlus size={14} className="text-purple-400" />}
+                  </div>
+                  <h3 className={`font-semibold text-sm ${darkMode ? 'text-white' : 'text-gray-900'}`}>{createPrompt.type === 'folder' ? 'Nueva carpeta' : 'Nuevo archivo'}</h3>
+                </div>
+                <button onClick={() => setCreatePrompt(null)} className={`p-1.5 rounded-lg transition-colors ${darkMode ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-100 text-gray-500'}`}><X size={15} /></button>
+              </div>
+              <div className="px-5 py-4">
+                <label className={`block text-xs font-medium mb-1.5 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{createPrompt.type === 'folder' ? 'Nombre de la carpeta' : 'Nombre del archivo'}</label>
+                <input
+                  autoFocus
+                  type="text"
+                  value={createPrompt.value}
+                  onChange={e => setCreatePrompt(p => ({ ...p, value: e.target.value, error: '' }))}
+                  onKeyDown={e => e.key === 'Enter' && confirmCreate()}
+                  placeholder={createPrompt.type === 'folder' ? 'mi-carpeta' : 'archivo.txt'}
+                  className={`w-full px-3 py-2 rounded-xl text-sm border focus:outline-none transition-colors ${darkMode ? 'bg-gray-900 border-gray-700 text-gray-200 placeholder-gray-600 focus:border-purple-500/60' : 'bg-gray-50 border-gray-200 text-gray-800 placeholder-gray-400 focus:border-purple-400'}`}
+                />
+                {createPrompt.error && <p className="mt-2 text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{createPrompt.error}</p>}
+              </div>
+              <div className={`flex justify-end gap-2 px-5 py-4 border-t ${darkMode ? 'border-gray-700/60' : 'border-gray-200'}`}>
+                <button onClick={() => setCreatePrompt(null)} className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors ${darkMode ? 'bg-gray-700 hover:bg-gray-600 text-gray-300' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'}`}>Cancelar</button>
+                <button onClick={confirmCreate} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-purple-600 hover:bg-purple-500 text-white transition-colors">
+                  {createPrompt.type === 'folder' ? <FolderPlus size={14} /> : <FilePlus size={14} />}Crear
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Visor / editor de archivo */}
       {selectedFile && (
