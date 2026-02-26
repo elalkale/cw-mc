@@ -1,15 +1,82 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { X, Search, Package, Download, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { X, Search, Package, Download, RefreshCw, ChevronLeft, ChevronRight, Tag, Layers, ArrowUpDown } from 'lucide-react';
 import { API_BASE, fetchWithToken } from '../lib/api.js';
 import DescriptionHTML from './DescriptionHTML.jsx';
 import Lightbox from './Lightbox.jsx';
+import FilterSelect from './FilterSelect.jsx';
 
 const LOADER_NAMES = { 1: 'Forge', 4: 'Fabric', 5: 'Quilt', 6: 'NeoForge' };
+const KNOWN_LOADERS = new Set(['Forge', 'Fabric', 'Quilt', 'NeoForge']);
+
+/** Extrae el loader de un archivo CF (gameVersions o sortableGameVersions para mods antiguos) */
+function getFileLoader(file) {
+  const fromGV = (file.gameVersions || []).find(v => KNOWN_LOADERS.has(v));
+  if (fromGV) return fromGV;
+  const fromSGV = (file.sortableGameVersions || []).find(sgv => KNOWN_LOADERS.has(sgv.gameVersionName));
+  return fromSGV?.gameVersionName ?? null;
+}
+
+/** Formatea una fecha ISO de CF en formato corto (ej. "14 ene 2021") */
+function formatFileDate(isoDate) {
+  if (!isoDate) return null;
+  return new Date(isoDate).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' });
+}
 const SORT_OPTIONS = [
   { value: '2', label: 'Popularidad' },
   { value: '6', label: 'Descargas' },
   { value: '3', label: 'Actualización' },
   { value: '4', label: 'Nombre' },
+];
+const MC_VERSION_OPTIONS = [
+  { value: '', label: 'Todas las versiones' },
+  ...[
+    // 1.21.x
+    '1.21.4','1.21.3','1.21.2','1.21.1','1.21',
+    // 1.20.x
+    '1.20.6','1.20.5','1.20.4','1.20.3','1.20.2','1.20.1','1.20',
+    // 1.19.x
+    '1.19.4','1.19.3','1.19.2','1.19.1','1.19',
+    // 1.18.x
+    '1.18.2','1.18.1','1.18',
+    // 1.17.x
+    '1.17.1','1.17',
+    // 1.16.x
+    '1.16.5','1.16.4','1.16.3','1.16.2','1.16.1','1.16',
+    // 1.15.x
+    '1.15.2','1.15.1','1.15',
+    // 1.14.x
+    '1.14.4','1.14.3','1.14.2','1.14.1','1.14',
+    // 1.13.x
+    '1.13.2','1.13.1','1.13',
+    // 1.12.x
+    '1.12.2','1.12.1','1.12',
+    // 1.11.x
+    '1.11.2','1.11',
+    // 1.10.x
+    '1.10.2','1.10',
+    // 1.9.x
+    '1.9.4','1.9',
+    // 1.8.x
+    '1.8.9','1.8.8','1.8',
+    // 1.7.x
+    '1.7.10','1.7.2',
+    // 1.6.x
+    '1.6.4','1.6.2',
+    // 1.5.x
+    '1.5.2','1.5',
+    // 1.4.x
+    '1.4.7','1.4.2',
+    // 1.3.x
+    '1.3.2',
+    // 1.2.x
+    '1.2.5',
+    // Legacy
+    '1.1','1.0',
+  ].map(v => ({ value: v, label: v })),
+];
+const CATALOG_LOADER_OPTIONS = [
+  { value: '', label: 'Todos los loaders' },
+  ...Object.entries(LOADER_NAMES).map(([k, v]) => ({ value: k, label: v })),
 ];
 const PAGE_SIZE = 20;
 
@@ -139,16 +206,71 @@ function ModCard({ mod, darkMode, installing, installed, error, onInstall, onDet
 }
 
 // ── Vista de detalle de mod ───────────────────────────────────────────────────
-function ModDetailView({ mod, darkMode, installing, installed, installError, onInstall, onBack, version, loader }) {
+function ModDetailView({ mod, darkMode, installing, installed, installError, onInstall, onBack, version, loader, depsNotice, onClearDeps }) {
   const [detailTab, setDetailTab] = useState('desc');
   const [description, setDescription] = useState('');
   const [loadingDesc, setLoadingDesc] = useState(false);
   const [files, setFiles] = useState([]);
   const [loadingFiles, setLoadingFiles] = useState(false);
   const [lightboxSrc, setLightboxSrc] = useState(null);
+  const [versionFilter, setVersionFilter] = useState('');
+  const [loaderFilter, setLoaderFilter] = useState('');
+  const [filesPage, setFilesPage] = useState(0);
+  const FILES_PER_PAGE = 15;
 
   const fileId = pickFileId(mod, version, loader);
   const compatible = fileId !== null;
+
+  // Un archivo se puede instalar solo si es compatible con el modpack
+  const isInstallable = (file) => {
+    const gv = file.gameVersions || [];
+    if (version && !gv.includes(version)) return false;
+    if (loader && LOADER_NAMES[Number(loader)] && !gv.includes(LOADER_NAMES[Number(loader)])) return false;
+    return true;
+  };
+
+  // Filtro de visualización (no afecta a qué se puede instalar)
+  const matchesFilter = (file) => {
+    const gv = file.gameVersions || [];
+    if (versionFilter && !gv.includes(versionFilter)) return false;
+    if (loaderFilter && LOADER_NAMES[Number(loaderFilter)] && !gv.includes(LOADER_NAMES[Number(loaderFilter)])) return false;
+    return true;
+  };
+
+  const filteredFiles = files.filter(matchesFilter);
+  const filesTotalPages = Math.ceil(filteredFiles.length / FILES_PER_PAGE);
+  const pagedFiles = filteredFiles.slice(filesPage * FILES_PER_PAGE, (filesPage + 1) * FILES_PER_PAGE);
+
+  // Reset página cuando cambian los filtros
+  useEffect(() => { setFilesPage(0); }, [versionFilter, loaderFilter]);
+
+  // Opciones de versión derivadas de los archivos cargados
+  const versionOptions = useMemo(() => {
+    const versions = [...new Set(
+      files.flatMap(f => f.gameVersions || []).filter(v => /^\d+\.\d+/.test(v))
+    )].sort((a, b) => {
+      const pa = a.split('.').map(Number);
+      const pb = b.split('.').map(Number);
+      for (let i = 0; i < 3; i++) if ((pb[i] || 0) !== (pa[i] || 0)) return (pb[i] || 0) - (pa[i] || 0);
+      return 0;
+    });
+    return [{ value: '', label: 'Todas las versiones' }, ...versions.map(v => ({ value: v, label: v }))];
+  }, [files]);
+
+  // Opciones de loader derivadas de los archivos cargados
+  const loaderOptions = useMemo(() => {
+    const present = new Set(
+      files.flatMap(f => f.gameVersions || [])
+        .map(v => Object.entries(LOADER_NAMES).find(([, name]) => name === v)?.[0])
+        .filter(Boolean)
+    );
+    return [
+      { value: '', label: 'Todos los loaders' },
+      ...Object.entries(LOADER_NAMES)
+        .filter(([k]) => present.has(k))
+        .map(([k, v]) => ({ value: k, label: v })),
+    ];
+  }, [files]);
 
   useEffect(() => {
     setLoadingDesc(true);
@@ -162,9 +284,32 @@ function ModDetailView({ mod, darkMode, installing, installed, installError, onI
   useEffect(() => {
     if (detailTab !== 'versions') return;
     setLoadingFiles(true);
-    fetchWithToken(`${API_BASE}/api/curseforge/mod/${mod.id}/files?pageSize=50`)
+    const PAGE = 50;
+    fetchWithToken(`${API_BASE}/api/curseforge/mod/${mod.id}/files?pageSize=${PAGE}&index=0`)
       .then(r => r.json())
-      .then(d => setFiles(d.data || []))
+      .then(async d => {
+        const first = d.data || [];
+        const total = d.pagination?.totalCount ?? first.length;
+        // Obtener el resto de páginas en paralelo
+        let all = first;
+        if (total > PAGE) {
+          const extraPages = Math.ceil((total - PAGE) / PAGE);
+          const results = await Promise.all(
+            Array.from({ length: extraPages }, (_, i) =>
+              fetchWithToken(`${API_BASE}/api/curseforge/mod/${mod.id}/files?pageSize=${PAGE}&index=${(i + 1) * PAGE}`)
+                .then(r => r.json())
+                .then(d2 => d2.data || [])
+                .catch(() => [])
+            )
+          );
+          all = [...first, ...results.flat()];
+        }
+        setFiles(all);
+        // Pre-seleccionar versión y loader del modpack solo si existen en los archivos cargados
+        const allGV = new Set(all.flatMap(f => f.gameVersions || []));
+        setVersionFilter(version && allGV.has(version) ? version : '');
+        setLoaderFilter(loader && LOADER_NAMES[Number(loader)] && allGV.has(LOADER_NAMES[Number(loader)]) ? String(loader) : '');
+      })
       .catch(console.error)
       .finally(() => setLoadingFiles(false));
   }, [mod.id, detailTab]);
@@ -183,6 +328,27 @@ function ModDetailView({ mod, darkMode, installing, installed, installError, onI
           Volver al catálogo
         </button>
       </div>
+
+      {/* Aviso dependencias */}
+      {depsNotice && (
+        <div className={`mx-4 mt-3 rounded-xl px-4 py-3 flex items-start gap-3 border flex-shrink-0 ${darkMode ? 'bg-indigo-500/10 border-indigo-500/25' : 'bg-indigo-50 border-indigo-200'}`}>
+          <div className="flex-1 min-w-0">
+            {depsNotice.deps.length > 0 && (
+              <p className={`text-xs font-medium ${darkMode ? 'text-indigo-300' : 'text-indigo-700'}`}>
+                Dependencias instaladas automáticamente: {depsNotice.deps.map(d => d.name).join(', ')}
+              </p>
+            )}
+            {depsNotice.failedDeps.length > 0 && (
+              <p className={`text-xs mt-0.5 ${darkMode ? 'text-red-400' : 'text-red-600'}`}>
+                No se pudieron instalar: {depsNotice.failedDeps.map(d => `mod ${d.modId}`).join(', ')}
+              </p>
+            )}
+          </div>
+          <button onClick={onClearDeps} className={`p-0.5 rounded flex-shrink-0 ${darkMode ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'}`}>
+            <X size={13} />
+          </button>
+        </div>
+      )}
 
       {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto custom-scrollbar">
@@ -307,67 +473,149 @@ function ModDetailView({ mod, darkMode, installing, installed, installError, onI
 
           {/* Versiones */}
           {detailTab === 'versions' && (
-            loadingFiles ? (
-              <div className="space-y-2">
-                {[...Array(5)].map((_, i) => (
-                  <div key={i} className={`h-14 rounded-xl animate-pulse ${darkMode ? 'bg-gray-700/50' : 'bg-gray-100'}`} />
-                ))}
+            <>
+              {/* Filtros — mismo diseño que el catálogo de modpacks */}
+              <div className={`-mx-5 -mt-5 mb-4 px-4 py-3 border-b flex flex-wrap gap-2 ${darkMode ? 'border-gray-700/60' : 'border-gray-200'}`}>
+                <FilterSelect
+                  value={versionFilter}
+                  onChange={setVersionFilter}
+                  options={versionOptions}
+                  placeholder="Versión"
+                  icon={Tag}
+                  darkMode={darkMode}
+                />
+                <FilterSelect
+                  value={loaderFilter}
+                  onChange={setLoaderFilter}
+                  options={loaderOptions}
+                  placeholder="Loader"
+                  icon={Layers}
+                  darkMode={darkMode}
+                />
               </div>
-            ) : files.length === 0 ? (
-              <p className={`text-sm ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>
-                No hay archivos disponibles.
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {files.map(file => (
-                  <div
-                    key={file.id}
-                    className={`flex items-center justify-between px-4 py-3 rounded-xl border gap-3 ${darkMode ? 'bg-gray-800/40 border-gray-700/40' : 'bg-gray-50 border-gray-200'}`}
-                  >
-                    <div className="flex-1 min-w-0">
-                      <p className={`text-sm font-medium truncate ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
-                        {file.displayName || file.fileName}
-                      </p>
-                      <p className={`text-xs mt-0.5 truncate ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>
-                        {file.gameVersions?.slice(0, 4).join(', ')}
-                      </p>
-                    </div>
+
+              {loadingFiles ? (
+                <div className="space-y-2">
+                  {[...Array(5)].map((_, i) => (
+                    <div key={i} className={`h-14 rounded-xl animate-pulse ${darkMode ? 'bg-gray-700/50' : 'bg-gray-100'}`} />
+                  ))}
+                </div>
+              ) : filteredFiles.length === 0 ? (
+                <p className={`text-sm ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>
+                  No hay archivos para estos filtros.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {pagedFiles.map(file => {
+                    const installable = isInstallable(file);
+                    return (
+                      <div
+                        key={file.id}
+                        className={`flex items-center justify-between px-4 py-3 rounded-xl border gap-3 ${darkMode ? 'bg-gray-800/40 border-gray-700/40' : 'bg-gray-50 border-gray-200'}`}
+                      >
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-sm font-medium truncate ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
+                            {file.displayName || file.fileName}
+                          </p>
+                          <div className="flex items-center gap-2 mt-1 flex-wrap">
+                            {/* Versiones MC */}
+                            {(file.gameVersions || []).filter(v => /^\d+\.\d+/.test(v)).slice(0, 3).map(v => (
+                              <span key={v} className={`text-[10px] px-1.5 py-0.5 rounded-md font-medium ${darkMode ? 'bg-gray-700/60 text-gray-400' : 'bg-gray-100 text-gray-500'}`}>{v}</span>
+                            ))}
+                            {/* Loader */}
+                            {getFileLoader(file) && (
+                              <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-medium ${darkMode ? 'bg-purple-500/15 text-purple-400' : 'bg-purple-50 text-purple-600'}`}>
+                                {getFileLoader(file)}
+                              </span>
+                            )}
+                            {/* Fecha */}
+                            {formatFileDate(file.fileDate) && (
+                              <span className={`text-[10px] ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>
+                                {formatFileDate(file.fileDate)}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => installable && onInstall(file.id)}
+                          disabled={!!installing || !installable}
+                          title={!installable ? `Solo se pueden instalar archivos compatibles con ${[version, loader ? LOADER_NAMES[Number(loader)] : null].filter(Boolean).join(' + ')}` : undefined}
+                          className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium flex-shrink-0 transition-all ${
+                            !installable
+                              ? darkMode ? 'border border-gray-700 text-gray-600 cursor-not-allowed' : 'border border-gray-200 text-gray-400 cursor-not-allowed'
+                              : installing
+                                ? 'bg-purple-600/60 text-white/70 cursor-wait'
+                                : 'bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white shadow-sm'
+                          }`}
+                        >
+                          {installing && installable
+                            ? <span className="w-3 h-3 rounded-full border-2 border-t-transparent border-white animate-spin" />
+                            : <Download size={10} />}
+                          {installable ? 'Instalar' : 'Incompatible'}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Paginación */}
+              {filesTotalPages > 1 && (
+                <div className={`flex items-center justify-between mt-4 pt-3 border-t ${darkMode ? 'border-gray-700/60' : 'border-gray-200'}`}>
+                  <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                    {filteredFiles.length} archivos
+                  </span>
+                  <div className="flex items-center gap-2">
                     <button
-                      onClick={() => onInstall(file.id)}
-                      disabled={!!installing}
-                      className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium flex-shrink-0 transition-all disabled:cursor-not-allowed ${
-                        installing
-                          ? 'bg-purple-600/60 text-white/70 cursor-wait'
-                          : 'bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white shadow-sm'
-                      }`}
+                      onClick={() => setFilesPage(p => Math.max(0, p - 1))}
+                      disabled={filesPage === 0}
+                      className={`p-1.5 rounded-lg transition-colors disabled:opacity-40 ${darkMode ? 'hover:bg-gray-700 text-gray-400 hover:text-gray-200' : 'hover:bg-gray-100 text-gray-500 hover:text-gray-700'}`}
+                      aria-label="Página anterior"
                     >
-                      {installing
-                        ? <span className="w-3 h-3 rounded-full border-2 border-t-transparent border-white animate-spin" />
-                        : <Download size={10} />}
-                      Instalar
+                      <ChevronLeft size={15} />
+                    </button>
+                    <span className={`text-xs font-medium min-w-[60px] text-center ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                      {filesPage + 1} / {filesTotalPages}
+                    </span>
+                    <button
+                      onClick={() => setFilesPage(p => Math.min(filesTotalPages - 1, p + 1))}
+                      disabled={filesPage >= filesTotalPages - 1}
+                      className={`p-1.5 rounded-lg transition-colors disabled:opacity-40 ${darkMode ? 'hover:bg-gray-700 text-gray-400 hover:text-gray-200' : 'hover:bg-gray-100 text-gray-500 hover:text-gray-700'}`}
+                      aria-label="Página siguiente"
+                    >
+                      <ChevronRight size={15} />
                     </button>
                   </div>
-                ))}
-              </div>
-            )
+                </div>
+              )}
+            </>
           )}
 
           {/* Capturas */}
           {detailTab === 'screenshots' && (
             mod.screenshots?.length > 0 ? (
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 {mod.screenshots.map(ss => (
-                  <img
+                  <button
                     key={ss.id}
-                    src={ss.thumbnailUrl || ss.url}
-                    alt={ss.title || ''}
-                    className="w-full rounded-xl cursor-pointer hover:opacity-90 transition-opacity object-cover aspect-video"
-                    onClick={() => setLightboxSrc(ss.url)}
-                  />
+                    onClick={() => setLightboxSrc(ss.url || ss.thumbnailUrl)}
+                    className={`aspect-video overflow-hidden rounded-xl border transition-all hover:-translate-y-0.5 hover:shadow-xl group ${darkMode
+                      ? 'border-purple-500/20 hover:border-purple-400/50'
+                      : 'border-purple-200/60 hover:border-purple-300'
+                    }`}
+                    aria-label={ss.title || 'Ver screenshot en grande'}
+                  >
+                    <img
+                      src={ss.thumbnailUrl || ss.url}
+                      alt={ss.title || ''}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      loading="lazy"
+                    />
+                  </button>
                 ))}
               </div>
             ) : (
-              <p className={`text-sm ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>
+              <p className={`text-sm ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
                 No hay capturas disponibles.
               </p>
             )
@@ -471,10 +719,6 @@ export default function ModCatalog({ server, data, darkMode, onClose, onModInsta
 
   const totalPages = Math.ceil(Math.min(totalCount, 10000) / PAGE_SIZE);
 
-  const inputCls = `px-3 py-2 rounded-xl text-sm border focus:outline-none transition-colors ${darkMode
-    ? 'bg-gray-900 border-gray-700 text-gray-200 placeholder-gray-600 focus:border-purple-500/60'
-    : 'bg-gray-50 border-gray-200 text-gray-800 placeholder-gray-400 focus:border-purple-400'
-  }`;
 
   return (
     <>
@@ -519,53 +763,51 @@ export default function ModCatalog({ server, data, darkMode, onClose, onModInsta
               onBack={() => setSelectedMod(null)}
               version={version}
               loader={loader}
+              depsNotice={depsNotice}
+              onClearDeps={() => setDepsNotice(null)}
             />
           ) : (
             <>
               {/* ── Filtros ── */}
               <div className={`px-4 py-3 border-b flex-shrink-0 flex flex-wrap gap-2 ${darkMode ? 'border-gray-700/60' : 'border-gray-200'}`}>
                 {/* Búsqueda */}
-                <div className="relative flex-1 min-w-44">
+                <div className={`relative flex-1 min-w-44`}>
                   <Search size={13} className={`absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none ${darkMode ? 'text-gray-500' : 'text-gray-400'}`} />
                   <input
                     type="text"
                     value={search}
                     onChange={e => setSearch(e.target.value)}
                     placeholder="Buscar mod..."
-                    className={`w-full pl-8 pr-3 ${inputCls}`}
+                    className={`w-full pl-8 pr-3 px-3 py-2 rounded-xl text-sm border focus:outline-none transition-colors ${darkMode ? 'bg-gray-800/80 border-gray-700/80 text-gray-200 placeholder-gray-500 focus:border-purple-500/50' : 'bg-white border-gray-200 text-gray-800 placeholder-gray-400 shadow-sm focus:border-purple-400'}`}
                   />
                 </div>
 
-                {/* Versión */}
-                <input
-                  type="text"
+                <FilterSelect
                   value={version}
-                  onChange={e => { setVersion(e.target.value); setPage(0); }}
-                  placeholder="1.20.1"
-                  className={`w-28 ${inputCls}`}
+                  onChange={v => { setVersion(v); setPage(0); }}
+                  options={MC_VERSION_OPTIONS}
+                  placeholder="Versión"
+                  icon={Tag}
+                  darkMode={darkMode}
                 />
 
-                {/* Loader */}
-                <select
+                <FilterSelect
                   value={loader}
-                  onChange={e => { setLoader(e.target.value); setPage(0); }}
-                  className={inputCls}
-                >
-                  <option value="">Todos los loaders</option>
-                  <option value="1">Forge</option>
-                  <option value="4">Fabric</option>
-                  <option value="5">Quilt</option>
-                  <option value="6">NeoForge</option>
-                </select>
+                  onChange={v => { setLoader(v); setPage(0); }}
+                  options={CATALOG_LOADER_OPTIONS}
+                  placeholder="Loader"
+                  icon={Layers}
+                  darkMode={darkMode}
+                />
 
-                {/* Orden */}
-                <select
+                <FilterSelect
                   value={sortField}
-                  onChange={e => { setSortField(e.target.value); setPage(0); }}
-                  className={inputCls}
-                >
-                  {SORT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
+                  onChange={v => { setSortField(v); setPage(0); }}
+                  options={SORT_OPTIONS}
+                  placeholder="Ordenar"
+                  icon={ArrowUpDown}
+                  darkMode={darkMode}
+                />
               </div>
 
               {/* ── Aviso dependencias instaladas ── */}
