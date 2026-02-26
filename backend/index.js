@@ -628,6 +628,41 @@ function cfHeaders() {
   };
 }
 
+// ── CurseForge fingerprint (MurmurHash2 32-bit, seed=1, sin espacios) ─────────
+function murmur2_32(buf, seed) {
+  const M = 0x5bd1e995;
+  let h = (seed ^ buf.length) >>> 0;
+  let i = 0;
+  while (i + 4 <= buf.length) {
+    let k = ((buf[i + 3] << 24) | (buf[i + 2] << 16) | (buf[i + 1] << 8) | buf[i]) >>> 0;
+    k = Math.imul(k, M) >>> 0; k ^= k >>> 24; k = Math.imul(k, M) >>> 0;
+    h = Math.imul(h, M) >>> 0; h = (h ^ k) >>> 0;
+    i += 4;
+  }
+  switch (buf.length - i) {
+    case 3: h = (h ^ (buf[i + 2] << 16)) >>> 0; // fallthrough
+    case 2: h = (h ^ (buf[i + 1] << 8)) >>> 0;  // fallthrough
+    case 1: h = (h ^ buf[i]) >>> 0; h = Math.imul(h, M) >>> 0;
+  }
+  h = (h ^ (h >>> 13)) >>> 0; h = Math.imul(h, M) >>> 0; h = (h ^ (h >>> 15)) >>> 0;
+  return h >>> 0;
+}
+
+function cfFingerprint(fileBuffer) {
+  let count = 0;
+  for (let i = 0; i < fileBuffer.length; i++) {
+    const b = fileBuffer[i];
+    if (b !== 9 && b !== 10 && b !== 13 && b !== 32) count++;
+  }
+  const filtered = Buffer.allocUnsafe(count);
+  let j = 0;
+  for (let i = 0; i < fileBuffer.length; i++) {
+    const b = fileBuffer[i];
+    if (b !== 9 && b !== 10 && b !== 13 && b !== 32) filtered[j++] = b;
+  }
+  return murmur2_32(filtered, 1);
+}
+
 // POST /api/curseforge/mods  { modIds: [1,2,...] }
 // Devuelve datos de varios mods a la vez (para las tarjetas del catálogo)
 apiRouter.post('/curseforge/mods', async (req, res) => {
@@ -694,6 +729,27 @@ apiRouter.get('/curseforge/mod/:modId/files', async (req, res) => {
     res.json(data);
   } catch (err) {
     console.error('CurseForge files error:', err);
+    res.status(500).json({ error: 'Error consultando CurseForge' });
+  }
+});
+
+// GET /api/curseforge/mods/search?searchFilter=...&gameVersion=...&modLoaderType=...&index=...&pageSize=...&sortField=...
+// Busca mods (classId=6) en CurseForge
+apiRouter.get('/curseforge/mods/search', async (req, res) => {
+  if (!process.env.CURSEFORGE_API_TOKEN) return res.json({ data: [], pagination: { totalCount: 0 } });
+  try {
+    const params = new URLSearchParams();
+    params.set('gameId', '432');
+    params.set('classId', '6');
+    const allowed = ['searchFilter', 'gameVersion', 'modLoaderType', 'sortField', 'sortOrder', 'index', 'pageSize', 'categoryId'];
+    for (const p of allowed) {
+      if (req.query[p] !== undefined && req.query[p] !== '') params.set(p, req.query[p]);
+    }
+    const resp = await fetch(`${CF_BASE}/mods/search?${params}`, { headers: cfHeaders() });
+    const data = await resp.json();
+    res.json(data);
+  } catch (err) {
+    console.error('CurseForge mods search error:', err);
     res.status(500).json({ error: 'Error consultando CurseForge' });
   }
 });
@@ -934,8 +990,15 @@ apiRouter.get('/servers/:name/mods', async (req, res) => {
   const state = servers[name];
   if (!state) return res.status(404).json({ error: 'Servidor no encontrado' });
   const modsDir = path.join(state.cfg.dir, 'mods');
-  if (!fs.existsSync(modsDir)) return res.json({ mods: [] });
+  if (!fs.existsSync(modsDir)) return res.json({ mods: [], needsIdentification: false });
   try {
+    // Leer mods.json si existe
+    const modsJsonPath = path.join(state.cfg.dir, 'mods.json');
+    let modsMetadata = null;
+    if (fs.existsSync(modsJsonPath)) {
+      try { modsMetadata = JSON.parse(await fs.promises.readFile(modsJsonPath, 'utf-8')); } catch {}
+    }
+
     const files = await fs.promises.readdir(modsDir);
     const mods = await Promise.all(
       files
@@ -943,13 +1006,114 @@ apiRouter.get('/servers/:name/mods', async (req, res) => {
         .map(async filename => {
           const stat = await fs.promises.stat(path.join(modsDir, filename));
           const enabled = !filename.endsWith('.disabled');
-          const modName = filename.replace(/\.jar(\.disabled)?$/, '');
-          return { name: modName, filename, enabled, size: stat.size };
+          const baseName = filename.replace(/\.disabled$/, '');
+          const fallbackName = baseName.replace(/\.jar$/, '');
+          const meta = modsMetadata?.mods?.[baseName] || {};
+          return {
+            name: meta.cfName || fallbackName,
+            filename,
+            enabled,
+            size: stat.size,
+            logo: meta.logo || null,
+            // null = aún no identificado, false = no encontrado en CF, true = reconocido
+            recognized: modsMetadata ? (meta.recognized ?? false) : null,
+            modId: meta.modId || null,
+            summary: meta.summary || null,
+            gameVersions: meta.gameVersions || [],
+          };
         })
     );
     mods.sort((a, b) => a.name.localeCompare(b.name));
-    res.json({ mods });
+    res.json({ mods, needsIdentification: !modsMetadata });
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/servers/:name/mods/identify — fingerprint de todos los .jar → mods.json
+apiRouter.post('/servers/:name/mods/identify', async (req, res) => {
+  const serverName = decodeURIComponent(req.params.name);
+  const state = servers[serverName];
+  if (!state) return res.status(404).json({ error: 'Servidor no encontrado' });
+
+  const modsDir = path.join(state.cfg.dir, 'mods');
+  const modsJsonPath = path.join(state.cfg.dir, 'mods.json');
+  const result = { identified_at: new Date().toISOString(), mods: {} };
+
+  if (!fs.existsSync(modsDir)) {
+    await fs.promises.writeFile(modsJsonPath, JSON.stringify(result, null, 2), 'utf-8');
+    return res.json(result);
+  }
+
+  try {
+    const files = await fs.promises.readdir(modsDir);
+    const jarFiles = files.filter(f => f.endsWith('.jar') || f.endsWith('.jar.disabled'));
+
+    if (!jarFiles.length) {
+      await fs.promises.writeFile(modsJsonPath, JSON.stringify(result, null, 2), 'utf-8');
+      return res.json(result);
+    }
+
+    // Calcular fingerprint de cada .jar
+    const fpToBase = {}; // fingerprint → baseName
+    for (const filename of jarFiles) {
+      const baseName = filename.replace(/\.disabled$/, '');
+      const buf = await fs.promises.readFile(path.join(modsDir, filename));
+      fpToBase[cfFingerprint(buf)] = baseName;
+    }
+
+    if (process.env.CURSEFORGE_API_TOKEN) {
+      // Consultar API de fingerprints de CurseForge
+      const fpResp = await fetch(`${CF_BASE}/fingerprints/432`, {
+        method: 'POST',
+        headers: cfHeaders(),
+        body: JSON.stringify({ fingerprints: Object.keys(fpToBase).map(Number) }),
+      });
+      const fpData = await fpResp.json();
+
+      // fingerprint → { modId, fileId }
+      const matchMap = {};
+      for (const match of (fpData?.data?.exactMatches || [])) {
+        const fp = match.file?.fileFingerprint;
+        if (fp) matchMap[fp] = { modId: match.id, fileId: match.file.id, gameVersions: match.file?.gameVersions || [] };
+      }
+
+      // Obtener detalles de los mods coincidentes
+      const modIds = [...new Set(Object.values(matchMap).map(m => m.modId))];
+      const modInfoMap = {};
+      if (modIds.length) {
+        const modsResp = await fetch(`${CF_BASE}/mods`, {
+          method: 'POST', headers: cfHeaders(),
+          body: JSON.stringify({ modIds }),
+        });
+        for (const mod of ((await modsResp.json())?.data || [])) {
+          modInfoMap[mod.id] = {
+            cfName: mod.name,
+            slug: mod.slug,
+            logo: mod.logo?.thumbnailUrl || mod.logo?.url || null,
+            summary: mod.summary,
+            downloadCount: mod.downloadCount,
+          };
+        }
+      }
+
+      for (const [fp, baseName] of Object.entries(fpToBase)) {
+        const match = matchMap[Number(fp)];
+        result.mods[baseName] = match
+          ? { recognized: true, modId: match.modId, fileId: match.fileId, gameVersions: match.gameVersions || [], ...modInfoMap[match.modId] }
+          : { recognized: false };
+      }
+    } else {
+      // Sin token — marcar todos como no reconocidos
+      for (const baseName of Object.values(fpToBase)) {
+        result.mods[baseName] = { recognized: false };
+      }
+    }
+
+    await fs.promises.writeFile(modsJsonPath, JSON.stringify(result, null, 2), 'utf-8');
+    res.json(result);
+  } catch (err) {
+    console.error('Error identificando mods:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -976,6 +1140,118 @@ apiRouter.post('/servers/:name/mods/toggle', async (req, res) => {
   }
   await fs.promises.rename(currentPath, path.join(modsDir, newFilename));
   res.json({ ok: true, newFilename });
+});
+
+// POST /api/servers/:name/mods/install — descarga e instala un mod .jar desde CurseForge
+apiRouter.post('/servers/:name/mods/install', async (req, res) => {
+  const serverName = decodeURIComponent(req.params.name);
+  const state = servers[serverName];
+  if (!state) return res.status(404).json({ error: 'Servidor no encontrado' });
+  const { modId, fileId } = req.body;
+  if (!modId || !fileId) return res.status(400).json({ error: 'Faltan parámetros: modId y fileId' });
+  try {
+    // 1. Obtener URL de descarga
+    const urlResp = await fetch(
+      `${CF_BASE}/mods/${modId}/files/${fileId}/download-url`,
+      { headers: cfHeaders() }
+    );
+    const urlData = await urlResp.json();
+    const downloadUrl = urlData?.data;
+    if (!downloadUrl) throw new Error('No se pudo obtener la URL de descarga');
+
+    // 2. Descargar el .jar
+    const dlResp = await fetch(downloadUrl);
+    if (!dlResp.ok) throw new Error(`Error descargando: ${dlResp.status}`);
+
+    // Determinar nombre del archivo desde la URL
+    const rawName = decodeURIComponent(downloadUrl.split('/').pop().split('?')[0]);
+    const filename = rawName.endsWith('.jar') ? rawName : rawName + '.jar';
+
+    // 3. Guardar en mods/
+    const modsDir = path.join(state.cfg.dir, 'mods');
+    if (!fs.existsSync(modsDir)) fs.mkdirSync(modsDir, { recursive: true });
+    const destPath = path.join(modsDir, filename);
+    const dest = createWriteStream(destPath);
+    await new Promise((resolve, reject) => {
+      Readable.fromWeb(dlResp.body).pipe(dest);
+      dest.on('finish', resolve);
+      dest.on('error', reject);
+    });
+
+    // Actualizar mods.json si existe
+    const modsJsonPath = path.join(state.cfg.dir, 'mods.json');
+    if (fs.existsSync(modsJsonPath) && process.env.CURSEFORGE_API_TOKEN) {
+      try {
+        const modsJson = JSON.parse(await fs.promises.readFile(modsJsonPath, 'utf-8'));
+        const modResp = await fetch(`${CF_BASE}/mods/${modId}`, { headers: cfHeaders() });
+        const mod = (await modResp.json())?.data;
+        const fileVersions = [...new Set(
+          (mod?.latestFilesIndexes || [])
+            .filter(idx => idx.fileId === Number(fileId))
+            .map(idx => idx.gameVersion)
+            .filter(Boolean)
+        )];
+        modsJson.mods[filename] = {
+          recognized: true,
+          modId: Number(modId),
+          fileId: Number(fileId),
+          gameVersions: fileVersions,
+          cfName: mod?.name || null,
+          slug: mod?.slug || null,
+          logo: mod?.logo?.thumbnailUrl || mod?.logo?.url || null,
+          summary: mod?.summary || null,
+          downloadCount: mod?.downloadCount || null,
+        };
+        await fs.promises.writeFile(modsJsonPath, JSON.stringify(modsJson, null, 2), 'utf-8');
+      } catch { /* no romper la respuesta si falla la actualización */ }
+    }
+
+    res.json({ ok: true, filename });
+  } catch (err) {
+    console.error('Error instalando mod:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/servers/:name/mods/upload — sube uno o más mods (.jar)
+apiRouter.post('/servers/:name/mods/upload', upload.array('mods', 20), async (req, res) => {
+  const serverName = decodeURIComponent(req.params.name);
+  const state = servers[serverName];
+  if (!state) {
+    for (const f of req.files || []) await fs.promises.unlink(f.path).catch(() => {});
+    return res.status(404).json({ error: 'Servidor no encontrado' });
+  }
+  const files = req.files || [];
+  if (!files.length) return res.status(400).json({ error: 'No se recibió ningún archivo' });
+
+  const modsDir = path.join(state.cfg.dir, 'mods');
+  if (!fs.existsSync(modsDir)) fs.mkdirSync(modsDir, { recursive: true });
+
+  const uploaded = [];
+  const errors = [];
+  for (const file of files) {
+    const originalName = file.originalname;
+    if (!originalName.endsWith('.jar')) {
+      await fs.promises.unlink(file.path).catch(() => {});
+      errors.push({ name: originalName, error: 'Solo se permiten archivos .jar' });
+      continue;
+    }
+    const destPath = path.join(modsDir, originalName);
+    try {
+      await fs.promises.copyFile(file.path, destPath);
+      await fs.promises.unlink(file.path);
+      uploaded.push(originalName);
+    } catch (err) {
+      await fs.promises.unlink(file.path).catch(() => {});
+      errors.push({ name: originalName, error: err.message });
+    }
+  }
+  // Invalidar mods.json para re-identificar en la próxima carga
+  if (uploaded.length) {
+    await fs.promises.unlink(path.join(state.cfg.dir, 'mods.json')).catch(() => {});
+  }
+
+  res.json({ ok: true, uploaded, errors });
 });
 
 app.use('/api', apiRouter);

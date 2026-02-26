@@ -4,10 +4,11 @@ import { io } from 'socket.io-client';
 import {
   Play, Square, PowerOff, HardDrive, Download,
   Activity, Wifi, Tag, Terminal, Send, Copy, Trash2, X, FolderOpen,
-  Package, Search, RefreshCw,
+  Package, Search, RefreshCw, Upload, HelpCircle,
 } from 'lucide-react';
 import { API_BASE, fetchWithToken } from '../lib/api.js';
 import FileExplorer from './FileExplorer.jsx';
+import ModCatalog from './ModCatalog.jsx';
 
 const LOADER_NAMES  = { 1: 'Forge', 4: 'Fabric', 5: 'Quilt', 6: 'NeoForge' };
 const LOADER_COLORS = { 1: 'bg-orange-500/15 text-orange-300 border-orange-500/25', 4: 'bg-blue-500/15 text-blue-300 border-blue-500/25', 5: 'bg-purple-500/15 text-purple-300 border-purple-500/25', 6: 'bg-yellow-500/15 text-yellow-300 border-yellow-500/25' };
@@ -38,6 +39,10 @@ export default function ServerDetail({ server, data, onStart, onStop, onForceSto
   const [loadingMods, setLoadingMods] = useState(false);
   const [togglingMod, setTogglingMod] = useState(null);
   const [modSearch, setModSearch] = useState('');
+  const [uploadingMods, setUploadingMods] = useState(false);
+  const [showModCatalog, setShowModCatalog] = useState(false);
+  const [identifyingMods, setIdentifyingMods] = useState(false);
+  const modUploadRef = useRef(null);
 
   const preRef = useRef();
   const socket = useRef(null);
@@ -141,13 +146,59 @@ export default function ServerDetail({ server, data, onStart, onStop, onForceSto
     } finally { setIsCreatingLocal(false); }
   };
 
+  const identifyMods = async () => {
+    setIdentifyingMods(true);
+    try {
+      const res = await fetchWithToken(
+        `${API_BASE}/api/servers/${encodeURIComponent(server)}/mods/identify`,
+        { method: 'POST' }
+      );
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error);
+      // Recargar la lista con los metadatos ya disponibles
+      const r2 = await fetchWithToken(`${API_BASE}/api/servers/${encodeURIComponent(server)}/mods`);
+      const d2 = await r2.json();
+      setMods(d2.mods || []);
+    } catch (err) {
+      console.error('Error identificando mods:', err);
+    } finally {
+      setIdentifyingMods(false);
+    }
+  };
+
   const fetchMods = () => {
     setLoadingMods(true);
     fetchWithToken(`${API_BASE}/api/servers/${encodeURIComponent(server)}/mods`)
       .then(r => r.json())
-      .then(data => setMods(data.mods || []))
+      .then(d => {
+        setMods(d.mods || []);
+        if (d.needsIdentification) identifyMods();
+      })
       .catch(console.error)
       .finally(() => setLoadingMods(false));
+  };
+
+  const handleModUpload = async (e) => {
+    const files = Array.from(e.target.files);
+    if (!files.length) return;
+    e.target.value = '';
+    setUploadingMods(true);
+    try {
+      const formData = new FormData();
+      files.forEach(f => formData.append('mods', f));
+      const res = await fetchWithToken(
+        `${API_BASE}/api/servers/${encodeURIComponent(server)}/mods/upload`,
+        { method: 'POST', body: formData }
+      );
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || 'Error al subir mods');
+      fetchMods();
+    } catch (err) {
+      console.error(err);
+      alert('Error: ' + err.message);
+    } finally {
+      setUploadingMods(false);
+    }
   };
 
   useEffect(() => {
@@ -360,7 +411,7 @@ export default function ServerDetail({ server, data, onStart, onStop, onForceSto
           </div>
           <p className={`text-xs font-medium mb-1 ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>Versión</p>
           <p className={`text-sm font-bold ${darkMode ? 'text-purple-300' : 'text-purple-700'}`}>
-            {data.version || 'N/A'}
+            {data.modpack?.gameVersions?.[0] || data.version || 'N/A'}
           </p>
         </div>
       </div>
@@ -459,14 +510,54 @@ export default function ServerDetail({ server, data, onStart, onStop, onForceSto
                 </span>
               )}
             </div>
-            <button
-              onClick={fetchMods}
-              disabled={loadingMods}
-              aria-label="Recargar mods"
-              className={`p-1.5 rounded-lg transition-colors disabled:opacity-40 ${darkMode ? 'hover:bg-gray-700 text-gray-400 hover:text-gray-200' : 'hover:bg-gray-100 text-gray-500 hover:text-gray-700'}`}
-            >
-              <RefreshCw size={13} className={loadingMods ? 'animate-spin' : ''} />
-            </button>
+            <div className="flex items-center gap-1">
+              <input
+                ref={modUploadRef}
+                type="file"
+                accept=".jar"
+                multiple
+                className="hidden"
+                onChange={handleModUpload}
+              />
+              {/* Botón catálogo */}
+              <button
+                onClick={() => setShowModCatalog(true)}
+                aria-label="Buscar mod en catálogo"
+                title="Buscar mod en catálogo"
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${darkMode
+                  ? 'bg-purple-500/15 hover:bg-purple-500/25 text-purple-300 hover:text-purple-200'
+                  : 'bg-purple-50 hover:bg-purple-100 text-purple-600 hover:text-purple-700'
+                }`}
+              >
+                <Package size={12} aria-hidden="true" />
+                Catálogo
+              </button>
+              {/* Botón subir .jar */}
+              <button
+                onClick={() => modUploadRef.current?.click()}
+                disabled={uploadingMods}
+                aria-label="Subir mod .jar"
+                title="Subir mod (.jar)"
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:opacity-40 ${darkMode
+                  ? 'hover:bg-gray-700 text-gray-400 hover:text-gray-200'
+                  : 'hover:bg-gray-100 text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                {uploadingMods
+                  ? <span className="w-3 h-3 rounded-full border-2 border-t-transparent border-current animate-spin" />
+                  : <Upload size={12} aria-hidden="true" />}
+                Subir
+              </button>
+              {/* Recargar */}
+              <button
+                onClick={fetchMods}
+                disabled={loadingMods}
+                aria-label="Recargar mods"
+                className={`p-1.5 rounded-lg transition-colors disabled:opacity-40 ${darkMode ? 'hover:bg-gray-700 text-gray-400 hover:text-gray-200' : 'hover:bg-gray-100 text-gray-500 hover:text-gray-700'}`}
+              >
+                <RefreshCw size={13} className={loadingMods ? 'animate-spin' : ''} />
+              </button>
+            </div>
           </div>
 
           {/* Búsqueda */}
@@ -484,11 +575,22 @@ export default function ServerDetail({ server, data, onStart, onStop, onForceSto
             />
           </div>
 
+          {/* Banner identificando */}
+          {identifyingMods && (
+            <div className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs ${darkMode
+              ? 'bg-purple-500/10 border border-purple-500/20 text-purple-300'
+              : 'bg-purple-50 border border-purple-200 text-purple-600'
+            }`}>
+              <RefreshCw size={11} className="animate-spin flex-shrink-0" />
+              Identificando mods con CurseForge…
+            </div>
+          )}
+
           {/* Lista */}
           {loadingMods ? (
             <div className="flex flex-col gap-1.5">
               {[...Array(4)].map((_, i) => (
-                <div key={i} className={`h-12 rounded-xl animate-pulse ${darkMode ? 'bg-gray-700/50' : 'bg-gray-100'}`} />
+                <div key={i} className={`h-14 rounded-xl animate-pulse ${darkMode ? 'bg-gray-700/50' : 'bg-gray-100'}`} />
               ))}
             </div>
           ) : filteredMods.length === 0 ? (
@@ -503,20 +605,51 @@ export default function ServerDetail({ server, data, onStart, onStop, onForceSto
               {filteredMods.map(mod => (
                 <div
                   key={mod.filename}
-                  className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-all ${darkMode
+                  className={`flex items-center gap-2.5 px-2.5 py-2 rounded-xl border transition-all ${darkMode
                     ? 'border-gray-700/40 hover:border-gray-600/60 hover:bg-gray-700/20'
                     : 'border-gray-100 hover:border-gray-200 hover:bg-gray-50'
                   } ${!mod.enabled ? 'opacity-55' : ''}`}
                 >
-                  <span className={`w-2 h-2 rounded-full flex-shrink-0 transition-colors ${mod.enabled ? 'bg-green-400' : darkMode ? 'bg-gray-600' : 'bg-gray-300'}`} />
+                  {/* Logo / icono */}
+                  <div className={`w-8 h-8 rounded-lg flex-shrink-0 flex items-center justify-center overflow-hidden ${
+                    mod.logo
+                      ? ''
+                      : mod.recognized === false
+                        ? darkMode ? 'bg-gray-700/70' : 'bg-gray-100'
+                        : darkMode ? 'bg-purple-500/15' : 'bg-purple-50'
+                  }`}>
+                    {mod.logo ? (
+                      <img
+                        src={mod.logo}
+                        alt=""
+                        className="w-full h-full object-cover"
+                        onError={e => { e.target.style.display = 'none'; }}
+                      />
+                    ) : mod.recognized === false ? (
+                      <HelpCircle size={15} className={darkMode ? 'text-gray-500' : 'text-gray-400'} />
+                    ) : (
+                      <Package size={15} className="text-purple-400 opacity-70" />
+                    )}
+                  </div>
+
                   <div className="flex-1 min-w-0">
                     <p className={`text-sm font-medium truncate ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
                       {mod.name}
                     </p>
-                    <p className={`text-xs ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>
-                      {formatSize(mod.size)}
-                    </p>
+                    <div className="flex items-center gap-1.5 mt-0.5 min-w-0">
+                      <span className={`text-xs flex-shrink-0 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>{formatSize(mod.size)}</span>
+                      {mod.recognized === true && (
+                        <span className={`text-[10px] font-mono truncate ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>
+                          {mod.filename.replace(/\.jar(\.disabled)?$/, '')}
+                        </span>
+                      )}
+                      {mod.recognized === false && (
+                        <span className={`text-[10px] flex-shrink-0 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`} title="No encontrado en CurseForge">· no reconocido</span>
+                      )}
+                    </div>
                   </div>
+
+                  {/* Toggle enable/disable */}
                   <button
                     onClick={() => toggleMod(mod)}
                     disabled={togglingMod !== null}
@@ -606,6 +739,18 @@ export default function ServerDetail({ server, data, onStart, onStop, onForceSto
           </button>
         </div>
       )}
+      {/* ── Modal Catálogo de Mods ───────────────────────────────────────── */}
+      {showModCatalog && (
+        <ModCatalog
+          server={server}
+          data={data}
+          darkMode={darkMode}
+          onClose={() => setShowModCatalog(false)}
+          onModInstalled={fetchMods}
+          installedModIds={new Set(mods.filter(m => m.modId).map(m => m.modId))}
+        />
+      )}
+
       {/* ── Modal Explorador de archivos ─────────────────────────────────── */}
       {showFiles && (
         <>

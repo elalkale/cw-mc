@@ -240,12 +240,12 @@ export default function ServerCard({ server, data, onStart, onStop, darkMode }) 
             </div>
           )}
 
-          {data.version && (
+          {(data.modpack?.gameVersions?.[0] || data.version) && (
             <span className={`px-2 py-0.5 rounded-lg text-xs border ${darkMode
               ? "bg-indigo-500/10 text-indigo-300 border-indigo-500/20"
               : "bg-indigo-50 text-indigo-600 border-indigo-200/80"
             }`}>
-              {data.version}
+              {data.modpack?.gameVersions?.[0] || data.version}
             </span>
           )}
         </div>
