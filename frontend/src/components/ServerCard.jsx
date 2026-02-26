@@ -112,11 +112,11 @@ export default function ServerCard({ server, data, onStart, onStop, darkMode }) 
     >
       {/* ── Banner ── */}
       <div className="h-[72px] relative overflow-hidden rounded-t-2xl flex-shrink-0">
-        {data.icon ? (
+        {(data.modpack?.logo || data.icon) ? (
           <img
-            src={`${API_BASE}/api/server-icon/${encodeURIComponent(server)}`}
+            src={data.modpack?.logo ?? `${API_BASE}/api/server-icon/${encodeURIComponent(server)}`}
             alt=""
-            className="w-full h-full object-cover"
+            className={`w-full h-full object-cover ${data.modpack?.logo ? 'scale-110 blur-sm opacity-60' : ''}`}
             onError={(e) => { e.target.style.display = 'none'; }}
           />
         ) : (

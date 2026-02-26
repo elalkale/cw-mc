@@ -158,6 +158,11 @@ function refreshServers() {
   for (const folder of folders) {
     if (!servers[folder]) {
       const dir = path.join(SERVER_ROOT, folder);
+      const modpackPath = path.join(dir, 'cw-mc-modpack.json');
+      let modpack = null;
+      if (fs.existsSync(modpackPath)) {
+        try { modpack = JSON.parse(fs.readFileSync(modpackPath, 'utf-8')); } catch { /* ignorar */ }
+      }
       servers[folder] = {
         cfg: {
           name: folder,
@@ -166,6 +171,7 @@ function refreshServers() {
           host: 'localhost',
           port: getServerPort(dir),
           version: getServerVersion(dir),
+          modpack,
         },
         process: null,
         logs: '',
@@ -254,6 +260,7 @@ apiRouter.get('/status', async (req, res) => {
       icon: fs.existsSync(iconPath) ? `/api/server-icon/${encodeURIComponent(name)}` : null,
       version: state.cfg.version,
       players: ping.players,
+      modpack: state.cfg.modpack || null,
     };
   }
 
@@ -711,7 +718,7 @@ apiRouter.get('/curseforge/mod/:modId/file/:fileId/download-url', async (req, re
 // --- Instalación de server packs ---
 const installs = {}; // { [installId]: { status, error, serverName } }
 
-async function runInstall(installId, modId, fileId, destDir) {
+async function runInstall(installId, modId, fileId, destDir, meta) {
   try {
     // 1. Obtener URL de descarga de CurseForge
     const urlResp = await fetch(
@@ -745,6 +752,15 @@ async function runInstall(installId, modId, fileId, destDir) {
 
     // 4. Limpiar temp
     fs.rmSync(tmpFile, { force: true });
+
+    // 4b. Guardar metadatos del modpack
+    if (meta) {
+      await fs.promises.writeFile(
+        path.join(destDir, 'cw-mc-modpack.json'),
+        JSON.stringify(meta, null, 2),
+        'utf-8'
+      );
+    }
 
     // 5. Ejecutar install.bat (Windows) o install.sh (Linux/Mac) si existe
     const batPath = path.join(destDir, 'install.bat');
@@ -783,7 +799,7 @@ async function runInstall(installId, modId, fileId, destDir) {
 
 // POST /api/install — inicia la instalación en background
 apiRouter.post('/install', (req, res) => {
-  const { modId, fileId, serverName } = req.body;
+  const { modId, fileId, serverName, meta } = req.body;
   if (!modId || !fileId || !serverName) {
     return res.status(400).json({ error: 'Faltan parámetros' });
   }
@@ -796,7 +812,7 @@ apiRouter.post('/install', (req, res) => {
   const installId = crypto.randomUUID();
   installs[installId] = { status: 'installing', error: null, serverName };
 
-  runInstall(installId, modId, fileId, destDir); // sin await → background
+  runInstall(installId, modId, fileId, destDir, meta ?? null); // sin await → background
 
   res.json({ installId });
 });

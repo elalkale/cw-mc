@@ -9,6 +9,9 @@ import {
 import { API_BASE, fetchWithToken } from '../lib/api.js';
 import FileExplorer from './FileExplorer.jsx';
 
+const LOADER_NAMES  = { 1: 'Forge', 4: 'Fabric', 5: 'Quilt', 6: 'NeoForge' };
+const LOADER_COLORS = { 1: 'bg-orange-500/15 text-orange-300 border-orange-500/25', 4: 'bg-blue-500/15 text-blue-300 border-blue-500/25', 5: 'bg-purple-500/15 text-purple-300 border-purple-500/25', 6: 'bg-yellow-500/15 text-yellow-300 border-yellow-500/25' };
+
 export default function ServerDetail({ server, data, onStart, onStop, onForceStop, onDelete, darkMode }) {
   const [logs, setLogs] = useState('');
   const [tab, setTab] = useState('consola');
@@ -191,11 +194,11 @@ export default function ServerDetail({ server, data, onStart, onStop, onForceSto
 
         {/* Banner */}
         <div className="h-20 sm:h-24 relative overflow-hidden flex-shrink-0 z-0">
-          {data.icon && (
+          {(data.modpack?.logo || data.icon) && (
             <img
-              src={`${API_BASE}/api/server-icon/${encodeURIComponent(server)}`}
+              src={data.modpack?.logo ?? `${API_BASE}/api/server-icon/${encodeURIComponent(server)}`}
               alt="" aria-hidden="true"
-              className="absolute inset-0 w-full h-full object-cover scale-110 blur-xl opacity-25"
+              className="absolute inset-0 w-full h-full object-cover scale-110 blur-xl opacity-40"
               onError={(e) => { e.target.style.display = 'none'; }}
             />
           )}
@@ -238,7 +241,33 @@ export default function ServerDetail({ server, data, onStart, onStop, onForceSto
             <h2 className={`text-xl font-bold bg-gradient-to-r bg-clip-text text-transparent ${darkMode ? 'from-purple-300 via-pink-300 to-purple-200' : 'from-purple-700 via-pink-600 to-purple-600'}`}>
               {server}
             </h2>
-            <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Panel de control del servidor</p>
+            {data.modpack ? (
+              <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                {data.modpack.logo && (
+                  <img src={data.modpack.logo} alt="" className="w-4 h-4 rounded object-cover flex-shrink-0" />
+                )}
+                <a
+                  href={`https://www.curseforge.com/minecraft/modpacks/${data.modpack.slug}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-purple-400 hover:text-purple-300 font-medium truncate max-w-[140px]"
+                >
+                  {data.modpack.name}
+                </a>
+                {data.modpack.modLoaders?.slice(0, 1).map(l => LOADER_NAMES[l] && (
+                  <span key={l} className={`text-xs px-1.5 py-px rounded-full border font-medium ${LOADER_COLORS[l] || 'bg-gray-700 text-gray-300 border-gray-600'}`}>
+                    {LOADER_NAMES[l]}
+                  </span>
+                ))}
+                {data.modpack.gameVersions?.slice(0, 1).map(v => (
+                  <span key={v} className="text-xs px-1.5 py-px rounded-full bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 font-mono">
+                    {v}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Panel de control del servidor</p>
+            )}
           </div>
         </div>
       </div>

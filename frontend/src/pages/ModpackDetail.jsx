@@ -130,7 +130,21 @@ export default function ModpackDetail({ darkMode, onInstallStart, onInstallClear
       const res  = await fetchWithToken(`${API_BASE}/api/install`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ modId: localPack.modId, fileId, serverName: name }),
+        body:    JSON.stringify({
+          modId:      localPack.modId,
+          fileId,
+          serverName: name,
+          meta: {
+            name:         localPack.name,
+            slug:         localPack.slug,
+            modId:        localPack.modId,
+            fileId,
+            logo:         cfMod?.logo?.thumbnailUrl ?? cfMod?.logo?.url ?? null,
+            modLoaders:   livePack.modLoaders,
+            gameVersions: livePack.gameVersions,
+            installedAt:  new Date().toISOString(),
+          },
+        }),
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
