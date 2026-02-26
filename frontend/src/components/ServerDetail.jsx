@@ -1,14 +1,16 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { io } from 'socket.io-client';
 import {
-  Play, Square, PowerOff, FileText, HardDrive, Download,
-  Activity, Wifi, Tag, Terminal, Send, Copy, Trash2, X,
+  Play, Square, PowerOff, HardDrive, Download,
+  Activity, Wifi, Tag, Terminal, Send, Copy, Trash2, X, FolderOpen,
 } from 'lucide-react';
 import { API_BASE, fetchWithToken } from '../lib/api.js';
+import FileExplorer from './FileExplorer.jsx';
 
 export default function ServerDetail({ server, data, onStart, onStop, onForceStop, onDelete, darkMode }) {
   const [logs, setLogs] = useState('');
-  const [logsVisible, setLogsVisible] = useState(true);
+  const [tab, setTab] = useState('panel');
   const [command, setCommand] = useState('');
   const [isBackingUp, setIsBackingUp] = useState(false);
   const [isCreatingLocal, setIsCreatingLocal] = useState(false);
@@ -23,6 +25,9 @@ export default function ServerDetail({ server, data, onStart, onStop, onForceSto
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
+
+  // ── File explorer ────────────────────────────────────────────────────────
+  const [showFiles, setShowFiles] = useState(false);
 
   const preRef = useRef();
   const socket = useRef(null);
@@ -189,9 +194,47 @@ export default function ServerDetail({ server, data, onStart, onStop, onForceSto
         </div>
       </div>
 
-      {/* ── Stats ──────────────────────────────────────────────────────────── */}
+      {/* ── Botones de control (siempre visibles) ───────────────────────────── */}
+      <div className="grid grid-cols-3 gap-2">
+        <button
+          onClick={() => onStart(server)} disabled={data.running}
+          aria-label={`Iniciar servidor ${server}`}
+          className={`flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-sm transition-all ${data.running
+            ? darkMode ? 'bg-gray-700/30 text-gray-500 cursor-not-allowed border border-gray-700/30' : 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200'
+            : 'bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white shadow-lg shadow-green-900/30 hover:scale-[1.02] active:scale-95'
+          }`}
+        >
+          <Play size={15} aria-hidden="true" /> Iniciar
+        </button>
+
+        <button
+          onClick={() => onStop(server)} disabled={!data.running}
+          aria-label={`Detener servidor ${server}`}
+          className={`flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-sm transition-all ${!data.running
+            ? darkMode ? 'bg-gray-700/30 text-gray-500 cursor-not-allowed border border-gray-700/30' : 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200'
+            : 'bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white shadow-lg shadow-red-900/30 hover:scale-[1.02] active:scale-95'
+          }`}
+        >
+          <Square size={15} aria-hidden="true" /> Detener
+        </button>
+
+        <button
+          onClick={() => onForceStop(server)} disabled={!data.running}
+          aria-label={`Forzar parada del servidor ${server}`}
+          title="Mata el proceso inmediatamente sin esperar al guardado"
+          className={`flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-sm border-2 transition-all ${!data.running
+            ? darkMode ? 'bg-gray-700/30 text-gray-500 cursor-not-allowed border-gray-700/30' : 'bg-gray-100 text-gray-400 cursor-not-allowed border-gray-200'
+            : darkMode
+              ? 'border-red-500/50 text-red-400 hover:bg-red-500/10 hover:border-red-400 hover:scale-[1.02] active:scale-95'
+              : 'border-red-400/60 text-red-600 hover:bg-red-50 hover:border-red-500 hover:scale-[1.02] active:scale-95'
+          }`}
+        >
+          <PowerOff size={15} aria-hidden="true" /> Forzar
+        </button>
+      </div>
+
+      {/* ── Stats (siempre visibles) ─────────────────────────────────────────── */}
       <div className="grid grid-cols-3 gap-3">
-        {/* Stat: Estado */}
         <div className={`rounded-2xl p-4 border shadow-sm ${darkMode
           ? (data.running ? 'bg-gradient-to-br from-gray-800/90 to-green-950/30 border-green-500/20' : 'bg-gradient-to-br from-gray-800/90 to-red-950/20 border-red-500/20')
           : (data.running ? 'bg-gradient-to-br from-white to-green-50 border-green-200/80' : 'bg-gradient-to-br from-white to-red-50 border-red-200/80')
@@ -209,7 +252,6 @@ export default function ServerDetail({ server, data, onStart, onStop, onForceSto
           {data.pid && <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>PID {data.pid}</p>}
         </div>
 
-        {/* Stat: Conexión */}
         <div className={`rounded-2xl p-4 border shadow-sm ${darkMode
           ? (data.ping?.up ? 'bg-gradient-to-br from-gray-800/90 to-blue-950/30 border-blue-500/20' : 'bg-gradient-to-br from-gray-800/90 via-purple-950/10 to-gray-900 border-purple-500/20')
           : (data.ping?.up ? 'bg-gradient-to-br from-white to-blue-50 border-blue-200/80' : 'bg-gradient-to-br from-white to-purple-50/60 border-purple-200/70')
@@ -231,7 +273,6 @@ export default function ServerDetail({ server, data, onStart, onStop, onForceSto
           )}
         </div>
 
-        {/* Stat: Versión */}
         <div className={`rounded-2xl p-4 border shadow-sm ${darkMode
           ? 'bg-gradient-to-br from-gray-800/90 to-purple-950/30 border-purple-500/25'
           : 'bg-gradient-to-br from-white to-purple-50 border-purple-200/80'
@@ -246,117 +287,33 @@ export default function ServerDetail({ server, data, onStart, onStop, onForceSto
         </div>
       </div>
 
-      {/* ── Botones de control ─────────────────────────────────────────────── */}
-      <div className="flex flex-col gap-2">
-        <div className="grid grid-cols-3 gap-2">
+      {/* ── Tabs ─────────────────────────────────────────────────────────────── */}
+      <div
+        className={`flex gap-1 p-1 rounded-2xl border ${darkMode ? 'bg-gray-800/60 border-gray-700/60' : 'bg-white border-gray-200 shadow-sm'}`}
+        role="tablist"
+      >
+        {[
+          { id: 'consola', label: 'Consola' },
+          { id: 'gestion', label: 'Gestión' },
+        ].map(t => (
           <button
-            onClick={() => onStart(server)} disabled={data.running}
-            aria-label={`Iniciar servidor ${server}`} aria-disabled={data.running}
-            className={`flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-sm transition-all ${data.running
-              ? darkMode ? 'bg-gray-700/30 text-gray-500 cursor-not-allowed border border-gray-700/30' : 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200'
-              : 'bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white shadow-lg shadow-green-900/30 hover:scale-[1.02] active:scale-95'
+            key={t.id}
+            role="tab"
+            aria-selected={tab === t.id}
+            onClick={() => setTab(t.id)}
+            className={`flex-1 py-2 px-3 rounded-xl text-sm font-medium transition-all ${tab === t.id
+              ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-sm'
+              : darkMode ? 'text-gray-400 hover:text-gray-200 hover:bg-gray-700/50' : 'text-gray-500 hover:text-gray-800 hover:bg-gray-100/80'
             }`}
           >
-            <Play size={15} aria-hidden="true" /> Iniciar
+            {t.label}
           </button>
-
-          <button
-            onClick={() => onStop(server)} disabled={!data.running}
-            aria-label={`Detener servidor ${server}`} aria-disabled={!data.running}
-            className={`flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-sm transition-all ${!data.running
-              ? darkMode ? 'bg-gray-700/30 text-gray-500 cursor-not-allowed border border-gray-700/30' : 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200'
-              : 'bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white shadow-lg shadow-red-900/30 hover:scale-[1.02] active:scale-95'
-            }`}
-          >
-            <Square size={15} aria-hidden="true" /> Detener
-          </button>
-
-          <button
-            onClick={() => onForceStop(server)} disabled={!data.running}
-            aria-label={`Forzar parada del servidor ${server}`}
-            title="Mata el proceso inmediatamente sin esperar al guardado"
-            className={`flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-sm border-2 transition-all ${!data.running
-              ? darkMode ? 'bg-gray-700/30 text-gray-500 cursor-not-allowed border-gray-700/30' : 'bg-gray-100 text-gray-400 cursor-not-allowed border-gray-200'
-              : darkMode
-                ? 'border-red-500/50 text-red-400 hover:bg-red-500/10 hover:border-red-400 hover:scale-[1.02] active:scale-95'
-                : 'border-red-400/60 text-red-600 hover:bg-red-50 hover:border-red-500 hover:scale-[1.02] active:scale-95'
-            }`}
-          >
-            <PowerOff size={15} aria-hidden="true" /> Forzar
-          </button>
-        </div>
-
-        <div className="grid grid-cols-3 gap-2">
-          <button
-            onClick={() => setLogsVisible(v => !v)}
-            aria-expanded={logsVisible} aria-controls={logsId}
-            className={`flex items-center justify-center gap-2 py-2.5 rounded-xl font-medium text-sm border transition-all hover:scale-[1.02] active:scale-95 ${darkMode
-              ? 'border-purple-500/30 text-purple-300 hover:bg-purple-500/10 hover:border-purple-400/50'
-              : 'border-purple-400/40 text-purple-700 hover:bg-purple-50 hover:border-purple-500/60'
-            }`}
-          >
-            <FileText size={14} aria-hidden="true" />
-            {logsVisible ? 'Ocultar Logs' : 'Ver Logs'}
-          </button>
-
-          <button
-            onClick={createLocalBackup} disabled={isCreatingLocal}
-            className={`flex items-center justify-center gap-2 py-2.5 rounded-xl font-medium text-sm border transition-all hover:scale-[1.02] active:scale-95 ${darkMode
-              ? 'border-indigo-500/30 text-indigo-300 hover:bg-indigo-500/10 hover:border-indigo-400/50'
-              : 'border-indigo-400/40 text-indigo-700 hover:bg-indigo-50 hover:border-indigo-500/60'
-            } ${isCreatingLocal ? 'opacity-50 cursor-not-allowed pointer-events-none' : ''}`}
-          >
-            {isCreatingLocal
-              ? <span className="w-3.5 h-3.5 rounded-full border-2 border-t-transparent border-current animate-spin" />
-              : <HardDrive size={14} aria-hidden="true" />}
-            {isCreatingLocal ? 'Creando...' : 'Backup Local'}
-          </button>
-
-          <button
-            onClick={downloadBackup} disabled={isBackingUp}
-            className={`flex items-center justify-center gap-2 py-2.5 rounded-xl font-medium text-sm border transition-all hover:scale-[1.02] active:scale-95 ${darkMode
-              ? 'border-blue-500/30 text-blue-300 hover:bg-blue-500/10 hover:border-blue-400/50'
-              : 'border-blue-400/40 text-blue-700 hover:bg-blue-50 hover:border-blue-500/60'
-            } ${isBackingUp ? 'opacity-50 cursor-not-allowed pointer-events-none' : ''}`}
-          >
-            {isBackingUp
-              ? <span className="w-3.5 h-3.5 rounded-full border-2 border-t-transparent border-current animate-spin" />
-              : <Download size={14} aria-hidden="true" />}
-            {isBackingUp ? 'Descargando...' : 'Descargar ZIP'}
-          </button>
-        </div>
-
-        {/* Fila gestión: Clonar + Eliminar */}
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            onClick={() => { setCloneName(`${server}-copia`); setCloneError(''); setShowCloneModal(true); }}
-            className={`flex items-center justify-center gap-2 py-2.5 rounded-xl font-medium text-sm border transition-all hover:scale-[1.02] active:scale-95 ${darkMode
-              ? 'border-indigo-500/30 text-indigo-300 hover:bg-indigo-500/10 hover:border-indigo-400/50'
-              : 'border-indigo-400/40 text-indigo-700 hover:bg-indigo-50 hover:border-indigo-500/60'
-            }`}
-          >
-            <Copy size={14} aria-hidden="true" /> Clonar
-          </button>
-          <button
-            onClick={() => { setDeleteError(''); setShowDeleteConfirm(true); }}
-            disabled={data.running}
-            title={data.running ? 'Detén el servidor antes de eliminarlo' : ''}
-            className={`flex items-center justify-center gap-2 py-2.5 rounded-xl font-medium text-sm border transition-all hover:scale-[1.02] active:scale-95 ${data.running
-              ? darkMode ? 'border-gray-700/30 text-gray-500 cursor-not-allowed' : 'border-gray-200 text-gray-400 cursor-not-allowed'
-              : darkMode
-                ? 'border-red-500/30 text-red-400 hover:bg-red-500/10 hover:border-red-400/50'
-                : 'border-red-400/40 text-red-600 hover:bg-red-50 hover:border-red-500/60'
-            }`}
-          >
-            <Trash2 size={14} aria-hidden="true" /> Eliminar
-          </button>
-        </div>
+        ))}
       </div>
 
-      {/* ── Terminal (logs + consola) ──────────────────────────────────────── */}
-      {logsVisible && (
+      {/* ── Consola ──────────────────────────────────────────────────────────── */}
+      {tab === 'consola' && (
         <div className={`rounded-2xl overflow-hidden shadow-lg border ${darkMode ? 'border-gray-700/60' : 'border-gray-200'}`}>
-          {/* Cabecera tipo macOS terminal */}
           <div className={`flex items-center gap-2 px-4 py-2.5 border-b ${darkMode ? 'bg-gray-800 border-gray-700/60' : 'bg-gray-100 border-gray-200'}`}>
             <span className="w-2.5 h-2.5 rounded-full bg-red-500/80 shrink-0" />
             <span className="w-2.5 h-2.5 rounded-full bg-yellow-500/80 shrink-0" />
@@ -367,7 +324,6 @@ export default function ServerDetail({ server, data, onStart, onStop, onForceSto
             </div>
           </div>
 
-          {/* Output */}
           <pre
             id={logsId}
             ref={preRef}
@@ -378,7 +334,6 @@ export default function ServerDetail({ server, data, onStart, onStop, onForceSto
             {logs || '// Esperando logs...'}
           </pre>
 
-          {/* Línea de entrada */}
           <div className={`flex items-center gap-2.5 px-4 py-2.5 border-t ${darkMode ? 'bg-gray-900 border-gray-700/60' : 'bg-gray-50 border-gray-200'}`}>
             <span className="text-green-500 font-mono text-sm shrink-0 select-none">$</span>
             <input
@@ -388,7 +343,6 @@ export default function ServerDetail({ server, data, onStart, onStop, onForceSto
               placeholder="escribe un comando..."
               disabled={!data.running}
               aria-label={`Comando para el servidor ${server}`}
-              aria-disabled={!data.running}
               className={`flex-1 bg-transparent font-mono text-sm focus:outline-none disabled:opacity-40 ${darkMode
                 ? 'text-green-400 placeholder-green-900/80'
                 : 'text-green-800 placeholder-green-700/30'
@@ -405,6 +359,114 @@ export default function ServerDetail({ server, data, onStart, onStop, onForceSto
           </div>
         </div>
       )}
+
+      {/* ── Gestión ──────────────────────────────────────────────────────────── */}
+      {tab === 'gestion' && (
+        <div className={`rounded-2xl border p-4 flex flex-col gap-2 ${darkMode
+          ? 'bg-gradient-to-br from-gray-800/90 via-purple-950/10 to-gray-900 border-purple-500/25'
+          : 'bg-gradient-to-br from-white to-purple-50/70 border-purple-300/60 shadow-sm'
+        }`}>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={createLocalBackup} disabled={isCreatingLocal}
+              className={`flex items-center justify-center gap-2 py-2.5 rounded-xl font-medium text-sm border transition-all hover:scale-[1.02] active:scale-95 ${darkMode
+                ? 'border-indigo-500/30 text-indigo-300 hover:bg-indigo-500/10 hover:border-indigo-400/50'
+                : 'border-indigo-400/40 text-indigo-700 hover:bg-indigo-50 hover:border-indigo-500/60'
+              } ${isCreatingLocal ? 'opacity-50 cursor-not-allowed pointer-events-none' : ''}`}
+            >
+              {isCreatingLocal
+                ? <span className="w-3.5 h-3.5 rounded-full border-2 border-t-transparent border-current animate-spin" />
+                : <HardDrive size={14} aria-hidden="true" />}
+              {isCreatingLocal ? 'Creando...' : 'Backup Local'}
+            </button>
+
+            <button
+              onClick={downloadBackup} disabled={isBackingUp}
+              className={`flex items-center justify-center gap-2 py-2.5 rounded-xl font-medium text-sm border transition-all hover:scale-[1.02] active:scale-95 ${darkMode
+                ? 'border-blue-500/30 text-blue-300 hover:bg-blue-500/10 hover:border-blue-400/50'
+                : 'border-blue-400/40 text-blue-700 hover:bg-blue-50 hover:border-blue-500/60'
+              } ${isBackingUp ? 'opacity-50 cursor-not-allowed pointer-events-none' : ''}`}
+            >
+              {isBackingUp
+                ? <span className="w-3.5 h-3.5 rounded-full border-2 border-t-transparent border-current animate-spin" />
+                : <Download size={14} aria-hidden="true" />}
+              {isBackingUp ? 'Descargando...' : 'Descargar ZIP'}
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={() => { setCloneName(`${server}-copia`); setCloneError(''); setShowCloneModal(true); }}
+              className={`flex items-center justify-center gap-2 py-2.5 rounded-xl font-medium text-sm border transition-all hover:scale-[1.02] active:scale-95 ${darkMode
+                ? 'border-indigo-500/30 text-indigo-300 hover:bg-indigo-500/10 hover:border-indigo-400/50'
+                : 'border-indigo-400/40 text-indigo-700 hover:bg-indigo-50 hover:border-indigo-500/60'
+              }`}
+            >
+              <Copy size={14} aria-hidden="true" /> Clonar
+            </button>
+            <button
+              onClick={() => { setDeleteError(''); setShowDeleteConfirm(true); }}
+              disabled={data.running}
+              title={data.running ? 'Detén el servidor antes de eliminarlo' : ''}
+              className={`flex items-center justify-center gap-2 py-2.5 rounded-xl font-medium text-sm border transition-all hover:scale-[1.02] active:scale-95 ${data.running
+                ? darkMode ? 'border-gray-700/30 text-gray-500 cursor-not-allowed' : 'border-gray-200 text-gray-400 cursor-not-allowed'
+                : darkMode
+                  ? 'border-red-500/30 text-red-400 hover:bg-red-500/10 hover:border-red-400/50'
+                  : 'border-red-400/40 text-red-600 hover:bg-red-50 hover:border-red-500/60'
+              }`}
+            >
+              <Trash2 size={14} aria-hidden="true" /> Eliminar
+            </button>
+          </div>
+
+          <button
+            onClick={() => setShowFiles(true)}
+            className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl font-medium text-sm border transition-all hover:scale-[1.02] active:scale-95 ${darkMode
+              ? 'border-purple-500/30 text-purple-300 hover:bg-purple-500/10 hover:border-purple-400/50'
+              : 'border-purple-400/40 text-purple-700 hover:bg-purple-50 hover:border-purple-500/60'
+            }`}
+          >
+            <FolderOpen size={14} aria-hidden="true" /> Explorador de archivos
+          </button>
+        </div>
+      )}
+      {/* ── Modal Explorador de archivos ─────────────────────────────────── */}
+      {showFiles && (
+        <>
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50" onClick={() => setShowFiles(false)} />
+          <div className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none p-4 md:p-8">
+            <div
+              className={`w-full max-w-4xl rounded-2xl shadow-2xl border pointer-events-auto flex flex-col ${darkMode
+                ? 'bg-gradient-to-br from-gray-800 to-gray-900 border-purple-500/30'
+                : 'bg-white border-purple-200/70'
+              }`}
+              onClick={e => e.stopPropagation()}
+            >
+              <div className={`flex items-center justify-between px-5 py-4 border-b flex-shrink-0 ${darkMode ? 'border-gray-700/60' : 'border-gray-200'}`}>
+                <div className="flex items-center gap-2">
+                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${darkMode ? 'bg-purple-500/15' : 'bg-purple-100'}`}>
+                    <FolderOpen size={14} className="text-purple-400" />
+                  </div>
+                  <h3 className={`font-semibold text-sm ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                    Explorador de archivos — {server}
+                  </h3>
+                </div>
+                <button
+                  onClick={() => setShowFiles(false)}
+                  className={`p-1.5 rounded-lg transition-colors ${darkMode ? 'hover:bg-gray-700 text-gray-400 hover:text-gray-200' : 'hover:bg-gray-100 text-gray-500 hover:text-gray-700'}`}
+                  aria-label="Cerrar explorador"
+                >
+                  <X size={15} />
+                </button>
+              </div>
+              <div className="h-[500px] p-4">
+                <FileExplorer serverName={server} darkMode={darkMode} />
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
       {/* ── Modal Clonar ─────────────────────────────────────────────────── */}
       {showCloneModal && (
         <>

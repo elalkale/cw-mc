@@ -1,7 +1,7 @@
+
 import React from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import ServerDetail from '../components/ServerDetail.jsx';
-import FileExplorer from '../components/FileExplorer.jsx';
 import {
   ArrowLeft, Sun, Moon, Cloud, CloudRain, Zap, Shield, Users,
 } from 'lucide-react';
@@ -18,7 +18,6 @@ const QUICK_CMDS = [
 export default function ServerDetailPage({ servers, startServer, stopServer, forceStopServer, sendCommand, darkMode }) {
   const { serverName } = useParams();
   const navigate = useNavigate();
-
   const data = servers[serverName];
 
   if (!data) {
@@ -59,10 +58,10 @@ export default function ServerDetailPage({ servers, startServer, stopServer, for
         Volver
       </button>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6 items-start">
 
-        {/* ── Columna principal ── */}
-        <div className="md:col-span-2 space-y-4">
+        {/* ── Columna principal (ServerDetail) ── */}
+        <div className="md:col-span-2">
           <ServerDetail
             server={serverName}
             data={data}
@@ -72,39 +71,13 @@ export default function ServerDetailPage({ servers, startServer, stopServer, for
             onDelete={() => navigate('/dashboard')}
             darkMode={darkMode}
           />
-
-          {/* Comandos rápidos */}
-          <div className={`rounded-2xl shadow-sm p-4 md:p-5 border transition-colors ${panelBg}`}>
-            <div className="flex items-center gap-2 mb-4">
-              <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${darkMode ? 'bg-purple-500/15' : 'bg-purple-50'}`}>
-                <Zap size={14} className="text-purple-400" />
-              </div>
-              <h2 className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                Comandos Rápidos
-              </h2>
-            </div>
-
-            <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-              {QUICK_CMDS.map(({ label, cmd, Icon, cls }) => (
-                <button
-                  key={cmd}
-                  onClick={() => sendCommand(serverName, cmd)}
-                  aria-label={`${label}: ${cmd}`}
-                  className={`flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl text-xs font-medium border transition-all hover:scale-[1.03] active:scale-95 ${cls}`}
-                >
-                  <Icon size={16} aria-hidden="true" />
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
         </div>
 
-        {/* ── Columna derecha: jugadores ── */}
-        <div className="md:col-span-1">
-          <div className={`rounded-2xl shadow-sm p-4 md:p-5 border transition-colors h-full ${panelBg}`}>
+        {/* ── Columna derecha: jugadores + comandos rápidos ── */}
+        <div className="md:col-span-1 flex flex-col gap-4">
 
-            {/* Header jugadores */}
+          {/* Jugadores */}
+          <div className={`rounded-2xl shadow-sm p-4 md:p-5 border transition-colors ${panelBg}`}>
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
                 <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${darkMode ? 'bg-purple-500/15' : 'bg-purple-50'}`}>
@@ -123,7 +96,6 @@ export default function ServerDetailPage({ servers, startServer, stopServer, for
               </span>
             </div>
 
-            {/* Lista */}
             <div className="flex flex-col gap-2">
               {data?.players?.sample?.length > 0 ? (
                 data.players.sample.map((p) => (
@@ -155,13 +127,35 @@ export default function ServerDetailPage({ servers, startServer, stopServer, for
               )}
             </div>
           </div>
+
+          {/* Comandos rápidos */}
+          <div className={`rounded-2xl shadow-sm p-4 border transition-colors ${panelBg}`}>
+            <div className="flex items-center gap-2 mb-4">
+              <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${darkMode ? 'bg-purple-500/15' : 'bg-purple-50'}`}>
+                <Zap size={14} className="text-purple-400" />
+              </div>
+              <h2 className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                Comandos Rápidos
+              </h2>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2">
+              {QUICK_CMDS.map(({ label, cmd, Icon, cls }) => (
+                <button
+                  key={cmd}
+                  onClick={() => sendCommand(serverName, cmd)}
+                  aria-label={`${label}: ${cmd}`}
+                  className={`flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl text-xs font-medium border transition-all hover:scale-[1.03] active:scale-95 ${cls}`}
+                >
+                  <Icon size={16} aria-hidden="true" />
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* File Explorer */}
-      <div className="h-[400px] min-h-[400px]">
-        <FileExplorer serverName={serverName} darkMode={darkMode} />
-      </div>
     </div>
   );
 }
