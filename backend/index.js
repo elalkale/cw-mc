@@ -912,6 +912,56 @@ apiRouter.post('/servers/upload', upload.single('file'), async (req, res) => {
   }
 });
 
+// GET /api/servers/:name/mods — lista los mods (.jar / .jar.disabled)
+apiRouter.get('/servers/:name/mods', async (req, res) => {
+  const name = decodeURIComponent(req.params.name);
+  const state = servers[name];
+  if (!state) return res.status(404).json({ error: 'Servidor no encontrado' });
+  const modsDir = path.join(state.cfg.dir, 'mods');
+  if (!fs.existsSync(modsDir)) return res.json({ mods: [] });
+  try {
+    const files = await fs.promises.readdir(modsDir);
+    const mods = await Promise.all(
+      files
+        .filter(f => f.endsWith('.jar') || f.endsWith('.jar.disabled'))
+        .map(async filename => {
+          const stat = await fs.promises.stat(path.join(modsDir, filename));
+          const enabled = !filename.endsWith('.disabled');
+          const modName = filename.replace(/\.jar(\.disabled)?$/, '');
+          return { name: modName, filename, enabled, size: stat.size };
+        })
+    );
+    mods.sort((a, b) => a.name.localeCompare(b.name));
+    res.json({ mods });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/servers/:name/mods/toggle — activa o desactiva un mod
+apiRouter.post('/servers/:name/mods/toggle', async (req, res) => {
+  const serverName = decodeURIComponent(req.params.name);
+  const state = servers[serverName];
+  if (!state) return res.status(404).json({ error: 'Servidor no encontrado' });
+  const { filename } = req.body;
+  if (!filename) return res.status(400).json({ error: 'Falta el nombre del archivo' });
+  const modsDir = path.resolve(path.join(state.cfg.dir, 'mods'));
+  const currentPath = path.resolve(path.join(modsDir, filename));
+  if (!currentPath.startsWith(modsDir + path.sep) && currentPath !== modsDir)
+    return res.status(400).json({ error: 'Ruta inválida' });
+  if (!fs.existsSync(currentPath)) return res.status(404).json({ error: 'Archivo no encontrado' });
+  let newFilename;
+  if (filename.endsWith('.jar.disabled')) {
+    newFilename = filename.slice(0, -'.disabled'.length);
+  } else if (filename.endsWith('.jar')) {
+    newFilename = filename + '.disabled';
+  } else {
+    return res.status(400).json({ error: 'Formato de archivo inválido' });
+  }
+  await fs.promises.rename(currentPath, path.join(modsDir, newFilename));
+  res.json({ ok: true, newFilename });
+});
+
 app.use('/api', apiRouter);
 
 // --- Servir frontend en producción ---

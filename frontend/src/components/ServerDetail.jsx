@@ -4,13 +4,14 @@ import { io } from 'socket.io-client';
 import {
   Play, Square, PowerOff, HardDrive, Download,
   Activity, Wifi, Tag, Terminal, Send, Copy, Trash2, X, FolderOpen,
+  Package, Search, RefreshCw,
 } from 'lucide-react';
 import { API_BASE, fetchWithToken } from '../lib/api.js';
 import FileExplorer from './FileExplorer.jsx';
 
 export default function ServerDetail({ server, data, onStart, onStop, onForceStop, onDelete, darkMode }) {
   const [logs, setLogs] = useState('');
-  const [tab, setTab] = useState('panel');
+  const [tab, setTab] = useState('consola');
   const [command, setCommand] = useState('');
   const [isBackingUp, setIsBackingUp] = useState(false);
   const [isCreatingLocal, setIsCreatingLocal] = useState(false);
@@ -28,6 +29,12 @@ export default function ServerDetail({ server, data, onStart, onStop, onForceSto
 
   // ── File explorer ────────────────────────────────────────────────────────
   const [showFiles, setShowFiles] = useState(false);
+
+  // ── Mods ─────────────────────────────────────────────────────────────────
+  const [mods, setMods] = useState([]);
+  const [loadingMods, setLoadingMods] = useState(false);
+  const [togglingMod, setTogglingMod] = useState(null);
+  const [modSearch, setModSearch] = useState('');
 
   const preRef = useRef();
   const socket = useRef(null);
@@ -130,6 +137,48 @@ export default function ServerDetail({ server, data, onStart, onStop, onForceSto
       alert('Error: ' + err.message);
     } finally { setIsCreatingLocal(false); }
   };
+
+  const fetchMods = () => {
+    setLoadingMods(true);
+    fetchWithToken(`${API_BASE}/api/servers/${encodeURIComponent(server)}/mods`)
+      .then(r => r.json())
+      .then(data => setMods(data.mods || []))
+      .catch(console.error)
+      .finally(() => setLoadingMods(false));
+  };
+
+  useEffect(() => {
+    if (tab === 'mods') fetchMods();
+  }, [tab]);
+
+  const toggleMod = async (mod) => {
+    setTogglingMod(mod.filename);
+    try {
+      const res = await fetchWithToken(
+        `${API_BASE}/api/servers/${encodeURIComponent(server)}/mods/toggle`,
+        { method: 'POST', body: JSON.stringify({ filename: mod.filename }) }
+      );
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error);
+      setMods(prev => prev.map(m =>
+        m.filename === mod.filename
+          ? { ...m, filename: d.newFilename, enabled: !m.enabled }
+          : m
+      ));
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setTogglingMod(null);
+    }
+  };
+
+  const formatSize = bytes => bytes < 1024 * 1024
+    ? `${(bytes / 1024).toFixed(0)} KB`
+    : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+
+  const filteredMods = mods.filter(m =>
+    m.name.toLowerCase().includes(modSearch.toLowerCase())
+  );
 
   return (
     <div className="flex flex-col space-y-4">
@@ -294,6 +343,7 @@ export default function ServerDetail({ server, data, onStart, onStop, onForceSto
       >
         {[
           { id: 'consola', label: 'Consola' },
+          { id: 'mods',    label: 'Mods' },
           { id: 'gestion', label: 'Gestión' },
         ].map(t => (
           <button
@@ -357,6 +407,103 @@ export default function ServerDetail({ server, data, onStart, onStop, onForceSto
               <Send size={13} aria-hidden="true" />
             </button>
           </div>
+        </div>
+      )}
+
+      {/* ── Mods ─────────────────────────────────────────────────────────────── */}
+      {tab === 'mods' && (
+        <div className={`rounded-2xl border p-4 flex flex-col gap-3 ${darkMode
+          ? 'bg-gradient-to-br from-gray-800/90 via-purple-950/10 to-gray-900 border-purple-500/25'
+          : 'bg-gradient-to-br from-white to-purple-50/70 border-purple-300/60 shadow-sm'
+        }`}>
+
+          {/* Header */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${darkMode ? 'bg-purple-500/15' : 'bg-purple-50'}`}>
+                <Package size={14} className="text-purple-400" />
+              </div>
+              <span className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Gestor de mods</span>
+              {mods.length > 0 && (
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${darkMode ? 'bg-gray-700 text-gray-400' : 'bg-gray-100 text-gray-500'}`}>
+                  {mods.filter(m => m.enabled).length}/{mods.length}
+                </span>
+              )}
+            </div>
+            <button
+              onClick={fetchMods}
+              disabled={loadingMods}
+              aria-label="Recargar mods"
+              className={`p-1.5 rounded-lg transition-colors disabled:opacity-40 ${darkMode ? 'hover:bg-gray-700 text-gray-400 hover:text-gray-200' : 'hover:bg-gray-100 text-gray-500 hover:text-gray-700'}`}
+            >
+              <RefreshCw size={13} className={loadingMods ? 'animate-spin' : ''} />
+            </button>
+          </div>
+
+          {/* Búsqueda */}
+          <div className="relative">
+            <Search size={13} className={`absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none ${darkMode ? 'text-gray-500' : 'text-gray-400'}`} />
+            <input
+              type="text"
+              value={modSearch}
+              onChange={e => setModSearch(e.target.value)}
+              placeholder="Buscar mod..."
+              className={`w-full pl-8 pr-3 py-2 rounded-xl text-sm border transition-colors focus:outline-none ${darkMode
+                ? 'bg-gray-900 border-gray-700 text-gray-200 placeholder-gray-600 focus:border-purple-500/60'
+                : 'bg-gray-50 border-gray-200 text-gray-800 placeholder-gray-400 focus:border-purple-400'
+              }`}
+            />
+          </div>
+
+          {/* Lista */}
+          {loadingMods ? (
+            <div className="flex flex-col gap-1.5">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className={`h-12 rounded-xl animate-pulse ${darkMode ? 'bg-gray-700/50' : 'bg-gray-100'}`} />
+              ))}
+            </div>
+          ) : filteredMods.length === 0 ? (
+            <div className={`flex flex-col items-center justify-center gap-2 py-10 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>
+              <Package size={28} className="opacity-30" />
+              <p className="text-xs text-center">
+                {mods.length === 0 ? 'No se encontraron mods' : 'Sin resultados para la búsqueda'}
+              </p>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-1 max-h-72 overflow-y-auto custom-scrollbar pr-1">
+              {filteredMods.map(mod => (
+                <div
+                  key={mod.filename}
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-all ${darkMode
+                    ? 'border-gray-700/40 hover:border-gray-600/60 hover:bg-gray-700/20'
+                    : 'border-gray-100 hover:border-gray-200 hover:bg-gray-50'
+                  } ${!mod.enabled ? 'opacity-55' : ''}`}
+                >
+                  <span className={`w-2 h-2 rounded-full flex-shrink-0 transition-colors ${mod.enabled ? 'bg-green-400' : darkMode ? 'bg-gray-600' : 'bg-gray-300'}`} />
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-sm font-medium truncate ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
+                      {mod.name}
+                    </p>
+                    <p className={`text-xs ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>
+                      {formatSize(mod.size)}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => toggleMod(mod)}
+                    disabled={togglingMod !== null}
+                    aria-label={mod.enabled ? `Desactivar ${mod.name}` : `Activar ${mod.name}`}
+                    className={`relative flex-shrink-0 w-11 h-6 rounded-full transition-colors duration-200 disabled:cursor-wait ${
+                      mod.enabled
+                        ? 'bg-green-500 hover:bg-green-400'
+                        : darkMode ? 'bg-gray-600 hover:bg-gray-500' : 'bg-gray-300 hover:bg-gray-400'
+                    }`}
+                  >
+                    <span className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-all duration-200 ${mod.enabled ? 'left-6' : 'left-1'} ${togglingMod === mod.filename ? 'opacity-60' : ''}`} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
