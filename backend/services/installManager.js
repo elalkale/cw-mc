@@ -41,7 +41,7 @@ async function flattenIfNeeded(destDir) {
  * configurando JAVA_HOME al JRE gestionado correcto para esa versión de MC.
  * No sobreescribe start.bat / start.sh originales.
  */
-async function generateStartScripts(destDir, mcVersion) {
+export async function generateStartScripts(destDir, mcVersion) {
   const { getMcJavaVersion, getJavaDir, isJavaReady } = await import('./javaManager.js');
   const { isWindows } = await import('../utils/platform.js');
 
@@ -50,6 +50,13 @@ async function generateStartScripts(destDir, mcVersion) {
   const javaNote = javaDir
     ? `Java ${javaVer} gestionado: ${javaDir}`
     : `Java ${javaVer} requerido — descárgalo desde el panel (Configuración → Java)`;
+
+  // Leer JAR configurado desde cw-mc-config.json; fallback a 'server.jar'
+  let serverJar = 'server.jar';
+  try {
+    const cfg = JSON.parse(fs.readFileSync(path.join(destDir, 'cw-mc-config.json'), 'utf-8'));
+    if (cfg.serverJar) serverJar = cfg.serverJar;
+  } catch {}
 
   // ── start-server.bat (Windows) ────────────────────────────────────────────
   const batLines = [
@@ -64,7 +71,7 @@ async function generateStartScripts(destDir, mcVersion) {
     'if exist start.bat (',
     '  call start.bat',
     ') else (',
-    '  echo No se encontro start.bat. Ejecuta install.bat primero.',
+    `  java -Xmx4G -Xms1G -jar "${serverJar}" nogui`,
     '  pause',
     ')',
   ].filter(l => l !== undefined).join('\r\n');
@@ -84,8 +91,7 @@ async function generateStartScripts(destDir, mcVersion) {
     'if [ -f start.sh ]; then',
     '  bash start.sh',
     'else',
-    '  echo "No se encontró start.sh. Ejecuta install.sh primero."',
-    '  exit 1',
+    `  java -Xmx4G -Xms1G -jar "${serverJar}" nogui`,
     'fi',
   ].filter(l => l !== undefined).join('\n');
 

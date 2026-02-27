@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Coffee, CheckCircle2, AlertCircle, Download, Save,
-  Server, RefreshCw, ChevronDown,
+  Server, RefreshCw, ChevronDown, Package,
 } from 'lucide-react';
 import { fetchWithToken } from '../lib/api';
 import { API } from '../constants';
@@ -106,6 +106,16 @@ export default function ServerConfig({ server, serverVersion, darkMode }: Props)
 
   const requiredJava = getMcJavaVersion(serverVersion);
 
+  // ── Ejecutable del servidor ───────────────────────────────────────────────
+  const [serverJarInput, setServerJarInput] = useState('');
+  const [savingJar, setSavingJar]           = useState(false);
+  const [jarMsg, setJarMsg]                 = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
+
+  // ── Script de inicio ──────────────────────────────────────────────────────
+  const [startScriptInput, setStartScriptInput] = useState('');
+  const [savingScript, setSavingScript]         = useState(false);
+  const [scriptMsg, setScriptMsg]               = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
+
   // Carga config Java del servidor
   useEffect(() => {
     fetchWithToken(API.SERVER_CONFIG(server))
@@ -113,6 +123,8 @@ export default function ServerConfig({ server, serverVersion, darkMode }: Props)
       .then((data: ServerJavaConfig) => {
         setJavaConfig(data);
         setJavaPathInput(data.javaPath ?? '');
+        setServerJarInput(data.serverJar ?? '');
+        setStartScriptInput(data.startScript ?? '');
       })
       .catch(() => {});
   }, [server]);
@@ -152,6 +164,44 @@ export default function ServerConfig({ server, serverVersion, darkMode }: Props)
   const startJavaDownload = async (ver: number) => {
     await fetchWithToken(API.JAVA_DOWNLOAD(ver), { method: 'POST' });
     fetchJavaStatus();
+  };
+
+  const saveServerJar = async () => {
+    setSavingJar(true);
+    setJarMsg(null);
+    try {
+      const res  = await fetchWithToken(API.SERVER_CONFIG(server), {
+        method: 'POST',
+        body: JSON.stringify({ serverJar: serverJarInput.trim() || null }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setJavaConfig(prev => prev ? { ...prev, serverJar: serverJarInput.trim() || null } : prev);
+      setJarMsg({ type: 'ok', text: 'Ejecutable guardado. Los scripts start-server.bat/.sh han sido regenerados.' });
+    } catch (err: any) {
+      setJarMsg({ type: 'err', text: err.message });
+    } finally {
+      setSavingJar(false);
+    }
+  };
+
+  const saveStartScript = async () => {
+    setSavingScript(true);
+    setScriptMsg(null);
+    try {
+      const res  = await fetchWithToken(API.SERVER_CONFIG(server), {
+        method: 'POST',
+        body: JSON.stringify({ startScript: startScriptInput.trim() || null }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setJavaConfig(prev => prev ? { ...prev, startScript: startScriptInput.trim() || null } : prev);
+      setScriptMsg({ type: 'ok', text: 'Script guardado. Se usará al iniciar el servidor.' });
+    } catch (err: any) {
+      setScriptMsg({ type: 'err', text: err.message });
+    } finally {
+      setSavingScript(false);
+    }
   };
 
   const saveJavaPath = async () => {
@@ -346,6 +396,172 @@ export default function ServerConfig({ server, serverVersion, darkMode }: Props)
             : darkMode ? 'bg-red-500/10 border-red-500/25 text-red-400' : 'bg-red-50 border-red-200 text-red-700'
           }`}>
             {javaMsg.text}
+          </p>
+        )}
+      </section>
+
+      {/* ── Sección ejecutable del servidor ───────────────────────────────── */}
+      <section className={`rounded-2xl border p-5 ${card}`}>
+        <div className="flex items-center gap-2 mb-4">
+          <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${darkMode ? 'bg-purple-500/15' : 'bg-purple-100'}`}>
+            <Package size={14} className="text-purple-400" aria-hidden="true" />
+          </div>
+          <h3 className={`font-semibold text-sm ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+            Ejecutable del servidor
+          </h3>
+        </div>
+
+        {/* Selector de JAR */}
+        {javaConfig && javaConfig.jarFiles.length > 0 ? (
+          <div className="mb-3">
+            <label className={labelCls}>JAR detectado en el directorio</label>
+            <ConfigSelect
+              value={serverJarInput}
+              onChange={v => setServerJarInput(v)}
+              options={[
+                { value: '', label: 'Seleccionar…' },
+                ...javaConfig.jarFiles.map(f => ({ value: f, label: f })),
+              ]}
+              darkMode={darkMode}
+            />
+          </div>
+        ) : (
+          <div className="mb-3">
+            <label className={labelCls}>Nombre del JAR</label>
+            <input
+              type="text"
+              value={serverJarInput}
+              onChange={e => setServerJarInput(e.target.value)}
+              placeholder="server.jar"
+              className={inputCls}
+              aria-label="Nombre del archivo JAR del servidor"
+            />
+          </div>
+        )}
+
+        {/* Input manual (siempre visible si hay selector) */}
+        {javaConfig && javaConfig.jarFiles.length > 0 && (
+          <div className="mb-3">
+            <label className={labelCls}>O escribe el nombre manualmente</label>
+            <input
+              type="text"
+              value={serverJarInput}
+              onChange={e => setServerJarInput(e.target.value)}
+              placeholder="server.jar"
+              className={inputCls}
+              aria-label="Nombre manual del archivo JAR"
+            />
+          </div>
+        )}
+
+        <p className={`text-xs mb-3 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+          Se usa al generar el script de inicio automático cuando no existe <code className="font-mono">start.bat</code>/<code className="font-mono">start.sh</code>.
+          Déjalo vacío para usar <code className="font-mono">server.jar</code> por defecto.
+        </p>
+
+        <button
+          onClick={saveServerJar}
+          disabled={savingJar}
+          className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white transition-all disabled:opacity-60 shadow-sm"
+        >
+          {savingJar
+            ? <RefreshCw size={13} className="animate-spin" aria-hidden="true" />
+            : <Save size={13} aria-hidden="true" />
+          }
+          Guardar ejecutable
+        </button>
+
+        {jarMsg && (
+          <p className={`text-xs mt-3 px-3 py-2 rounded-xl border ${jarMsg.type === 'ok'
+            ? darkMode ? 'bg-green-500/10 border-green-500/25 text-green-400' : 'bg-green-50 border-green-200 text-green-700'
+            : darkMode ? 'bg-red-500/10 border-red-500/25 text-red-400' : 'bg-red-50 border-red-200 text-red-700'
+          }`}>
+            {jarMsg.text}
+          </p>
+        )}
+      </section>
+
+      {/* ── Sección script de inicio ──────────────────────────────────────── */}
+      <section className={`rounded-2xl border p-5 ${card}`}>
+        <div className="flex items-center gap-2 mb-4">
+          <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${darkMode ? 'bg-purple-500/15' : 'bg-purple-100'}`}>
+            <Server size={14} className="text-purple-400" aria-hidden="true" />
+          </div>
+          <h3 className={`font-semibold text-sm ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+            Script de inicio
+          </h3>
+          {javaConfig?.startScript && (
+            <span className={`ml-auto text-xs px-2 py-0.5 rounded-lg border font-mono truncate max-w-[160px] ${darkMode ? 'bg-green-500/10 border-green-500/20 text-green-400' : 'bg-green-50 border-green-200 text-green-700'}`}>
+              {javaConfig.startScript}
+            </span>
+          )}
+        </div>
+
+        {/* Selector de scripts detectados */}
+        {javaConfig && javaConfig.scriptFiles.length > 0 ? (
+          <div className="mb-3">
+            <label className={labelCls}>Script detectado en el directorio</label>
+            <ConfigSelect
+              value={startScriptInput}
+              onChange={v => setStartScriptInput(v)}
+              options={[
+                { value: '', label: 'Auto-detectar (recomendado)' },
+                ...javaConfig.scriptFiles.map(f => ({ value: f, label: f })),
+              ]}
+              darkMode={darkMode}
+            />
+          </div>
+        ) : (
+          <div className="mb-3">
+            <label className={labelCls}>Nombre del script</label>
+            <input
+              type="text"
+              value={startScriptInput}
+              onChange={e => setStartScriptInput(e.target.value)}
+              placeholder="start-server.bat"
+              className={inputCls}
+              aria-label="Nombre del script de inicio"
+            />
+          </div>
+        )}
+
+        {javaConfig && javaConfig.scriptFiles.length > 0 && (
+          <div className="mb-3">
+            <label className={labelCls}>O escribe el nombre manualmente</label>
+            <input
+              type="text"
+              value={startScriptInput}
+              onChange={e => setStartScriptInput(e.target.value)}
+              placeholder="start-server.bat"
+              className={inputCls}
+              aria-label="Nombre manual del script de inicio"
+            />
+          </div>
+        )}
+
+        <p className={`text-xs mb-3 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+          Script que CW-MC ejecuta al pulsar <strong>Iniciar</strong>. Déjalo vacío para usar la auto-detección
+          (prioridad: <code className="font-mono">start-server.bat</code> → <code className="font-mono">start.bat</code>).
+        </p>
+
+        <button
+          onClick={saveStartScript}
+          disabled={savingScript}
+          className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white transition-all disabled:opacity-60 shadow-sm"
+        >
+          {savingScript
+            ? <RefreshCw size={13} className="animate-spin" aria-hidden="true" />
+            : <Save size={13} aria-hidden="true" />
+          }
+          Guardar script
+        </button>
+
+        {scriptMsg && (
+          <p className={`text-xs mt-3 px-3 py-2 rounded-xl border ${scriptMsg.type === 'ok'
+            ? darkMode ? 'bg-green-500/10 border-green-500/25 text-green-400' : 'bg-green-50 border-green-200 text-green-700'
+            : darkMode ? 'bg-red-500/10 border-red-500/25 text-red-400' : 'bg-red-50 border-red-200 text-red-700'
+          }`}>
+            {scriptMsg.text}
           </p>
         )}
       </section>

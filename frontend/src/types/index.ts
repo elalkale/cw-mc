@@ -107,6 +107,10 @@ export interface ServerJavaConfig {
   requiredVersion: 8 | 17 | 21;
   managedReady:    boolean;
   managedPath:     string | null;
+  serverJar:       string | null;
+  jarFiles:        string[];
+  startScript:     string | null;
+  scriptFiles:     string[];
 }
 
 export interface ServerProperties {

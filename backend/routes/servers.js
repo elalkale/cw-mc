@@ -33,6 +33,13 @@ async function createFallbackStartScript(serverDir, mcVersion) {
     ? `Java ${javaVer} gestionado: ${javaD}`
     : `Java ${javaVer} requerido — descárgalo desde el panel`;
 
+  // Leer JAR configurado; si no hay, usar 'server.jar' como fallback
+  let serverJar = 'server.jar';
+  try {
+    const cfg = JSON.parse(fs.readFileSync(path.join(serverDir, 'cw-mc-config.json'), 'utf-8'));
+    if (cfg.serverJar) serverJar = cfg.serverJar;
+  } catch {}
+
   // ── Windows ─────────────────────────────────────────────────────────────
   const batContent = [
     '@echo off',
@@ -41,7 +48,7 @@ async function createFallbackStartScript(serverDir, mcVersion) {
     javaD ? `SET "JAVA_HOME=${javaD}"` : 'REM Java gestionado no disponible, usando java del PATH',
     javaD ? 'SET "PATH=%JAVA_HOME%\\bin;%PATH%"' : '',
     '',
-    'java -Xmx4G -Xms1G -jar server.jar nogui',
+    `java -Xmx4G -Xms1G -jar "${serverJar}" nogui`,
     'pause',
   ].filter(l => l !== undefined).join('\r\n');
 
@@ -55,7 +62,7 @@ async function createFallbackStartScript(serverDir, mcVersion) {
     javaD ? `export JAVA_HOME="${javaD}"` : '# Java gestionado no disponible, usando java del PATH',
     javaD ? 'export PATH="$JAVA_HOME/bin:$PATH"' : '',
     '',
-    'java -Xmx4G -Xms1G -jar server.jar nogui',
+    `java -Xmx4G -Xms1G -jar "${serverJar}" nogui`,
   ].filter(l => l !== undefined).join('\n');
 
   await fs.promises.writeFile(path.join(serverDir, 'start-server.sh'), shContent, 'utf-8');
@@ -116,25 +123,34 @@ export function createServerRoutes(io) {
     if (!state) return res.status(404).json({ error: 'Servidor no encontrado' });
     if (state.process && !state.process.killed) return res.status(400).json({ error: 'Ya en ejecución' });
 
+    // Leer configuración del servidor (script, java, jar)
+    const serverCfgPath = path.join(state.cfg.dir, 'cw-mc-config.json');
+    let cwCfg = {};
+    try { cwCfg = JSON.parse(fs.readFileSync(serverCfgPath, 'utf-8')); } catch {}
+
+    // Determinar script de inicio: config manual → auto-detección → generar fallback
     let startCmd;
-    try {
-      startCmd = getStartCommand(state.cfg.dir);
-    } catch {
-      // No existe ningún script de inicio — generar start-server.bat / start-server.sh
+    const configuredScript = cwCfg.startScript || null;
+    if (configuredScript && fs.existsSync(path.join(state.cfg.dir, configuredScript))) {
+      startCmd = configuredScript;
+    } else {
       try {
-        startCmd = await createFallbackStartScript(state.cfg.dir, state.cfg.version);
-        const msg = `[CW-MC] No se encontró script de inicio. Se ha generado ${startCmd} automáticamente.\n`;
-        state.logs += msg;
-        io.to(name).emit('log', { server: name, line: msg });
-      } catch (genErr) {
-        return res.status(500).json({ error: `No se pudo crear el script de inicio: ${genErr.message}` });
+        startCmd = getStartCommand(state.cfg.dir);
+      } catch {
+        // No existe ningún script de inicio — generar start-server.bat / start-server.sh
+        try {
+          startCmd = await createFallbackStartScript(state.cfg.dir, state.cfg.version);
+          const msg = `[CW-MC] No se encontró script de inicio. Se ha generado ${startCmd} automáticamente.\n`;
+          state.logs += msg;
+          io.to(name).emit('log', { server: name, line: msg });
+        } catch (genErr) {
+          return res.status(500).json({ error: `No se pudo crear el script de inicio: ${genErr.message}` });
+        }
       }
     }
 
     // Determinar java a usar: config manual → JRE gestionado → herencia del sistema
-    const serverCfgPath = path.join(state.cfg.dir, 'cw-mc-config.json');
-    let javaPath = null;
-    try { javaPath = JSON.parse(fs.readFileSync(serverCfgPath, 'utf-8')).javaPath || null; } catch {}
+    let javaPath = cwCfg.javaPath || null;
     if (!javaPath) {
       const javaVer = getMcJavaVersion(state.cfg.version);
       if (isJavaReady(javaVer)) javaPath = getJavaExe(javaVer);
@@ -428,14 +444,27 @@ export function createServerRoutes(io) {
     if (!state) return res.status(404).json({ error: 'Servidor no encontrado' });
 
     const cfgPath = path.join(state.cfg.dir, 'cw-mc-config.json');
-    let javaPath = null;
-    try { javaPath = JSON.parse(fs.readFileSync(cfgPath, 'utf-8')).javaPath ?? null; } catch {}
+    let javaPath = null, serverJar = null, startScript = null;
+    try {
+      const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf-8'));
+      javaPath    = cfg.javaPath    ?? null;
+      serverJar   = cfg.serverJar   ?? null;
+      startScript = cfg.startScript ?? null;
+    } catch {}
+
+    // Listar JARs y scripts en el directorio del servidor
+    let jarFiles = [], scriptFiles = [];
+    try {
+      const entries = fs.readdirSync(state.cfg.dir);
+      jarFiles    = entries.filter(f => f.endsWith('.jar')).sort();
+      scriptFiles = entries.filter(f => f.endsWith('.bat') || f.endsWith('.sh')).sort();
+    } catch {}
 
     const requiredVersion = getMcJavaVersion(state.cfg.version);
     const managedReady    = isJavaReady(requiredVersion);
     const managedPath     = managedReady ? getJavaExe(requiredVersion) : null;
 
-    res.json({ javaPath, requiredVersion, managedReady, managedPath });
+    res.json({ javaPath, requiredVersion, managedReady, managedPath, serverJar, jarFiles, startScript, scriptFiles });
   });
 
   // POST /api/servers/:name/config
@@ -444,14 +473,26 @@ export function createServerRoutes(io) {
     const state = servers[name];
     if (!state) return res.status(404).json({ error: 'Servidor no encontrado' });
 
-    const { javaPath } = req.body;
+    const { javaPath, serverJar, startScript } = req.body;
     const cfgPath = path.join(state.cfg.dir, 'cw-mc-config.json');
 
     let existing = {};
     try { existing = JSON.parse(fs.readFileSync(cfgPath, 'utf-8')); } catch {}
 
-    await fs.promises.writeFile(cfgPath, JSON.stringify({ ...existing, javaPath: javaPath || null }, null, 2), 'utf-8');
-    res.json({ ok: true });
+    await fs.promises.writeFile(cfgPath, JSON.stringify({
+      ...existing,
+      javaPath:    javaPath    !== undefined ? (javaPath    || null) : existing.javaPath,
+      serverJar:   serverJar   !== undefined ? (serverJar   || null) : existing.serverJar,
+      startScript: startScript !== undefined ? (startScript || null) : existing.startScript,
+    }, null, 2), 'utf-8');
+
+    // Regenerar start-server.bat / start-server.sh con la nueva configuración
+    try {
+      const { generateStartScripts } = await import('../services/installManager.js');
+      await generateStartScripts(state.cfg.dir, state.cfg.version);
+    } catch { /* ignorar si no hay scripts que regenerar */ }
+
+    res.json({ ok: true, scriptsRegenerated: true });
   });
 
   // ── server.properties ─────────────────────────────────────────────────────
