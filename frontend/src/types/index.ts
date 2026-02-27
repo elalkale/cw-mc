@@ -93,6 +93,34 @@ export interface InstallState {
   error?: string | null;
 }
 
+// ── Java ──────────────────────────────────────────────────────────────────────
+
+export interface JavaVersionStatus {
+  ready:    boolean;
+  status:   'idle' | 'downloading' | 'done' | 'error';
+  progress: number;
+  error:    string;
+}
+
+export interface ServerJavaConfig {
+  javaPath:        string | null;
+  requiredVersion: 8 | 17 | 21;
+  managedReady:    boolean;
+  managedPath:     string | null;
+}
+
+export interface ServerProperties {
+  motd?:             string;
+  'max-players'?:    string;
+  gamemode?:         string;
+  difficulty?:       string;
+  pvp?:              string;
+  'white-list'?:     string;
+  'view-distance'?:  string;
+  'online-mode'?:    string;
+  'level-seed'?:     string;
+}
+
 // ── API helper ────────────────────────────────────────────────────────────────
 
 export type ApiResponse<T = Record<string, unknown>> =

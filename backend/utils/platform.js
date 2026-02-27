@@ -34,28 +34,32 @@ export function killProcess(pid) {
  * @throws {Error} si no se encuentra ningún script
  */
 export function getStartCommand(serverDir) {
-  const batExists = fs.existsSync(path.join(serverDir, 'start.bat'));
-  const shExists  = fs.existsSync(path.join(serverDir, 'start.sh'));
+  // Preferir scripts generados por CW-MC (con Java correcto configurado)
+  const cwBatExists = fs.existsSync(path.join(serverDir, 'start-server.bat'));
+  const cwShExists  = fs.existsSync(path.join(serverDir, 'start-server.sh'));
+  const batExists   = fs.existsSync(path.join(serverDir, 'start.bat'));
+  const shExists    = fs.existsSync(path.join(serverDir, 'start.sh'));
 
+  if (isWindows && cwBatExists) return 'start-server.bat';
+  if (!isWindows && cwShExists)  return 'start-server.sh';
+  if (cwBatExists) return 'start-server.bat';
+  if (cwShExists)  return 'start-server.sh';
   if (isWindows && batExists) return 'start.bat';
   if (!isWindows && shExists)  return 'start.sh';
-  if (batExists) return 'start.bat';  // fallback multiplataforma
+  if (batExists) return 'start.bat';
   if (shExists)  return 'start.sh';
-  throw new Error(`No se encontró script de inicio en ${serverDir} (start.bat o start.sh)`);
+  throw new Error(`No se encontró script de inicio en ${serverDir} (start-server.bat o start.bat)`);
 }
 
 /**
  * Extrae un ZIP en un directorio de destino usando Node.js (unzipper).
- * Funciona igual en Windows y Linux, sin necesitar PowerShell.
+ * Usa Open.file() que lee el directorio central desde el final del ZIP,
+ * más robusto que Extract() que hace streaming progresivo.
  * @param {string} zipPath - Ruta al archivo ZIP
  * @param {string} destDir - Directorio de destino
  */
 export async function extractZip(zipPath, destDir) {
   const unzipper = (await import('unzipper')).default;
-  return new Promise((resolve, reject) => {
-    fs.createReadStream(zipPath)
-      .pipe(unzipper.Extract({ path: destDir }))
-      .on('close', resolve)
-      .on('error', reject);
-  });
+  const directory = await unzipper.Open.file(zipPath);
+  await directory.extract({ path: destDir });
 }

@@ -133,7 +133,7 @@ export default function ModpackHero({
                   if (installStatus === 'idle' || installStatus === 'error') {
                     const serverFile = files.find(f => (f.serverPackFileId ?? f.id) === localPack.serverFileId);
                     const fileLabel = serverFile?.displayName || serverFile?.fileName || 'Versión recomendada';
-                    onOpenInstallModal(null, fileLabel, localPack.slug);
+                    onOpenInstallModal(null, fileLabel, localPack.slug, serverFile?.gameVersions ?? []);
                   }
                 }}
                 disabled={installStatus === 'installing'}

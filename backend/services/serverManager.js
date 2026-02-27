@@ -25,6 +25,17 @@ export function setServerRoot(root) {
 // ── Utilidades de servidor ────────────────────────────────────────────────────
 
 export function getServerVersion(dir) {
+  // 1. Prioridad: cw-mc-modpack.json (versión exacta del fichero instalado)
+  try {
+    const modpackPath = path.join(dir, 'cw-mc-modpack.json');
+    if (fs.existsSync(modpackPath)) {
+      const meta = JSON.parse(fs.readFileSync(modpackPath, 'utf-8'));
+      const mcVersion = meta.gameVersions?.find(v => /^\d+\.\d+/.test(v));
+      if (mcVersion) return mcVersion;
+    }
+  } catch { /* ignorar */ }
+
+  // 2. Fallback: extraer versión del nombre del JAR
   try {
     const jar = fs.readdirSync(dir).find(f => f.endsWith('.jar'));
     if (jar) {
@@ -77,15 +88,16 @@ export function refreshServers() {
     }
   }
 
-  // Añadir servidores detectados nuevos
+  // Añadir/actualizar servidores detectados
   for (const folder of folders) {
+    const dir = path.join(serverRoot, folder);
+    const modpackPath = path.join(dir, 'cw-mc-modpack.json');
+    let modpack = null;
+    if (fs.existsSync(modpackPath)) {
+      try { modpack = JSON.parse(fs.readFileSync(modpackPath, 'utf-8')); } catch { /* ignorar */ }
+    }
+
     if (!servers[folder]) {
-      const dir = path.join(serverRoot, folder);
-      const modpackPath = path.join(dir, 'cw-mc-modpack.json');
-      let modpack = null;
-      if (fs.existsSync(modpackPath)) {
-        try { modpack = JSON.parse(fs.readFileSync(modpackPath, 'utf-8')); } catch { /* ignorar */ }
-      }
       servers[folder] = {
         cfg: {
           name: folder,
@@ -100,6 +112,9 @@ export function refreshServers() {
         commandQueue: [],
       };
       console.log(`Servidor detectado: ${folder} (v${servers[folder].cfg.version})`);
+    } else {
+      // Actualizar modpack por si cw-mc-modpack.json fue creado/modificado
+      servers[folder].cfg.modpack = modpack;
     }
   }
 }

@@ -33,3 +33,6 @@ package-lock.json
 *.sw?
 # Optional npm cache directory
 .npm
+
+# JREs gestionados por Cube Watcher
+java/

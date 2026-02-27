@@ -16,7 +16,58 @@ import crypto from 'crypto';
 
 import { servers, getServerRoot, refreshServers, checkMinecraft } from '../services/serverManager.js';
 import { installs, runInstall } from '../services/installManager.js';
-import { killProcess, getStartCommand, extractZip } from '../utils/platform.js';
+import { killProcess, getStartCommand, extractZip, isWindows } from '../utils/platform.js';
+import { getMcJavaVersion, getJavaExe, getJavaDir, isJavaReady } from '../services/javaManager.js';
+
+/**
+ * Genera start-server.bat y start-server.sh en el directorio del servidor
+ * cuando no existe ningún script de inicio. Invoca java directamente.
+ * @param {string} serverDir
+ * @param {string} mcVersion
+ * @returns {string} nombre del script generado según la plataforma
+ */
+async function createFallbackStartScript(serverDir, mcVersion) {
+  const javaVer = getMcJavaVersion(mcVersion);
+  const javaD   = isJavaReady(javaVer) ? getJavaDir(javaVer) : null;
+  const javaNote = javaD
+    ? `Java ${javaVer} gestionado: ${javaD}`
+    : `Java ${javaVer} requerido — descárgalo desde el panel`;
+
+  // ── Windows ─────────────────────────────────────────────────────────────
+  const batContent = [
+    '@echo off',
+    `REM Generado por CW-MC — ${javaNote}`,
+    '',
+    javaD ? `SET "JAVA_HOME=${javaD}"` : 'REM Java gestionado no disponible, usando java del PATH',
+    javaD ? 'SET "PATH=%JAVA_HOME%\\bin;%PATH%"' : '',
+    '',
+    'java -Xmx4G -Xms1G -jar server.jar nogui',
+    'pause',
+  ].filter(l => l !== undefined).join('\r\n');
+
+  await fs.promises.writeFile(path.join(serverDir, 'start-server.bat'), batContent, 'utf-8');
+
+  // ── Linux / macOS ────────────────────────────────────────────────────────
+  const shContent = [
+    '#!/usr/bin/env bash',
+    `# Generado por CW-MC — ${javaNote}`,
+    '',
+    javaD ? `export JAVA_HOME="${javaD}"` : '# Java gestionado no disponible, usando java del PATH',
+    javaD ? 'export PATH="$JAVA_HOME/bin:$PATH"' : '',
+    '',
+    'java -Xmx4G -Xms1G -jar server.jar nogui',
+  ].filter(l => l !== undefined).join('\n');
+
+  await fs.promises.writeFile(path.join(serverDir, 'start-server.sh'), shContent, 'utf-8');
+  if (!isWindows) {
+    try { fs.chmodSync(path.join(serverDir, 'start-server.sh'), 0o755); } catch { /* ignorar */ }
+  }
+
+  return isWindows ? 'start-server.bat' : 'start-server.sh';
+}
+
+// Propiedades de server.properties que este panel puede leer y editar
+const MANAGED_PROPS = ['motd', 'max-players', 'difficulty', 'gamemode', 'white-list', 'pvp', 'view-distance', 'level-seed', 'online-mode'];
 
 const upload = multer({ dest: os.tmpdir() });
 
@@ -58,7 +109,7 @@ export function createServerRoutes(io) {
   });
 
   // POST /api/start
-  router.post('/start', (req, res) => {
+  router.post('/start', async (req, res) => {
     refreshServers();
     const { name } = req.body;
     const state = servers[name];
@@ -68,11 +119,40 @@ export function createServerRoutes(io) {
     let startCmd;
     try {
       startCmd = getStartCommand(state.cfg.dir);
-    } catch (err) {
-      return res.status(400).json({ error: err.message });
+    } catch {
+      // No existe ningún script de inicio — generar start-server.bat / start-server.sh
+      try {
+        startCmd = await createFallbackStartScript(state.cfg.dir, state.cfg.version);
+        const msg = `[CW-MC] No se encontró script de inicio. Se ha generado ${startCmd} automáticamente.\n`;
+        state.logs += msg;
+        io.to(name).emit('log', { server: name, line: msg });
+      } catch (genErr) {
+        return res.status(500).json({ error: `No se pudo crear el script de inicio: ${genErr.message}` });
+      }
     }
 
-    const child = spawn(startCmd, [], { cwd: state.cfg.dir, shell: true });
+    // Determinar java a usar: config manual → JRE gestionado → herencia del sistema
+    const serverCfgPath = path.join(state.cfg.dir, 'cw-mc-config.json');
+    let javaPath = null;
+    try { javaPath = JSON.parse(fs.readFileSync(serverCfgPath, 'utf-8')).javaPath || null; } catch {}
+    if (!javaPath) {
+      const javaVer = getMcJavaVersion(state.cfg.version);
+      if (isJavaReady(javaVer)) javaPath = getJavaExe(javaVer);
+    }
+
+    let spawnEnv = process.env;
+    if (javaPath) {
+      const javaDir = path.resolve(path.dirname(javaPath), '..');
+      spawnEnv = {
+        ...process.env,
+        JAVA_HOME: javaDir,
+        PATH: isWindows
+          ? `${javaDir}\\bin;${process.env.PATH ?? ''}`
+          : `${javaDir}/bin:${process.env.PATH ?? ''}`,
+      };
+    }
+
+    const child = spawn(startCmd, [], { cwd: state.cfg.dir, shell: true, env: spawnEnv });
     state.process = child;
     state.logs = '';
     state.commandQueue = [];
@@ -337,6 +417,90 @@ export function createServerRoutes(io) {
     const entry = installs[req.params.installId];
     if (!entry) return res.status(404).json({ error: 'Instalación no encontrada' });
     res.json(entry);
+  });
+
+  // ── Configuración por servidor (Java path) ────────────────────────────────
+
+  // GET /api/servers/:name/config
+  router.get('/servers/:name/config', (req, res) => {
+    const name  = decodeURIComponent(req.params.name);
+    const state = servers[name];
+    if (!state) return res.status(404).json({ error: 'Servidor no encontrado' });
+
+    const cfgPath = path.join(state.cfg.dir, 'cw-mc-config.json');
+    let javaPath = null;
+    try { javaPath = JSON.parse(fs.readFileSync(cfgPath, 'utf-8')).javaPath ?? null; } catch {}
+
+    const requiredVersion = getMcJavaVersion(state.cfg.version);
+    const managedReady    = isJavaReady(requiredVersion);
+    const managedPath     = managedReady ? getJavaExe(requiredVersion) : null;
+
+    res.json({ javaPath, requiredVersion, managedReady, managedPath });
+  });
+
+  // POST /api/servers/:name/config
+  router.post('/servers/:name/config', async (req, res) => {
+    const name  = decodeURIComponent(req.params.name);
+    const state = servers[name];
+    if (!state) return res.status(404).json({ error: 'Servidor no encontrado' });
+
+    const { javaPath } = req.body;
+    const cfgPath = path.join(state.cfg.dir, 'cw-mc-config.json');
+
+    let existing = {};
+    try { existing = JSON.parse(fs.readFileSync(cfgPath, 'utf-8')); } catch {}
+
+    await fs.promises.writeFile(cfgPath, JSON.stringify({ ...existing, javaPath: javaPath || null }, null, 2), 'utf-8');
+    res.json({ ok: true });
+  });
+
+  // ── server.properties ─────────────────────────────────────────────────────
+
+  // GET /api/servers/:name/properties
+  router.get('/servers/:name/properties', (req, res) => {
+    const name  = decodeURIComponent(req.params.name);
+    const state = servers[name];
+    if (!state) return res.status(404).json({ error: 'Servidor no encontrado' });
+
+    const propsPath = path.join(state.cfg.dir, 'server.properties');
+    if (!fs.existsSync(propsPath)) return res.json({ exists: false, properties: {} });
+
+    const properties = {};
+    for (const line of fs.readFileSync(propsPath, 'utf-8').split('\n')) {
+      const m = line.match(/^([^#=\s][^=]*)=(.*)$/);
+      if (m && MANAGED_PROPS.includes(m[1].trim())) {
+        properties[m[1].trim()] = m[2].trim();
+      }
+    }
+    res.json({ exists: true, properties });
+  });
+
+  // POST /api/servers/:name/properties
+  router.post('/servers/:name/properties', async (req, res) => {
+    const name  = decodeURIComponent(req.params.name);
+    const state = servers[name];
+    if (!state) return res.status(404).json({ error: 'Servidor no encontrado' });
+
+    const propsPath = path.join(state.cfg.dir, 'server.properties');
+    if (!fs.existsSync(propsPath)) return res.status(404).json({ error: 'No se encontró server.properties' });
+
+    const { properties } = req.body;
+    if (!properties || typeof properties !== 'object') return res.status(400).json({ error: 'Se esperan propiedades como objeto' });
+
+    let content = fs.readFileSync(propsPath, 'utf-8');
+    for (const [key, value] of Object.entries(properties)) {
+      if (!MANAGED_PROPS.includes(key)) continue;
+      const val = String(value);
+      const regex = new RegExp(`^(${key.replace('-', '\\-')}\\s*=).*$`, 'm');
+      if (regex.test(content)) {
+        content = content.replace(regex, `$1${val}`);
+      } else {
+        content += `\n${key}=${val}`;
+      }
+    }
+
+    await fs.promises.writeFile(propsPath, content, 'utf-8');
+    res.json({ ok: true });
   });
 
   return router;

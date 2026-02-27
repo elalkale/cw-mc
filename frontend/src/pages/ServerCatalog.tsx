@@ -123,7 +123,7 @@ export default function ServerCatalog({ darkMode }) {
             <BookOpen size={11} />
             CurseForge
           </div>
-          <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent mb-1">
+          <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent mb-4">
             Catálogo de Modpacks
           </h1>
           <p className={`text-sm ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>

@@ -26,6 +26,7 @@ import settingsRoutes          from './routes/settings.js';
 import filesRoutes             from './routes/files.js';
 import modsRoutes              from './routes/mods.js';
 import curseforgeRoutes        from './routes/curseforge.js';
+import javaRoutes              from './routes/java.js';
 import { createServerRoutes, shutdown } from './routes/servers.js';
 
 // ── Express + HTTP Server ─────────────────────────────────────────────────────
@@ -105,10 +106,13 @@ app.use('/', authRoutes);
 const apiRouter = express.Router();
 apiRouter.use(verifyToken);
 
+apiRouter.get('/me', (req, res) => res.json({ loggedIn: true, user: req.user }));
+
 apiRouter.use('/settings',   settingsRoutes);
 apiRouter.use('/files',      filesRoutes);
 apiRouter.use('/servers',    modsRoutes);
 apiRouter.use('/curseforge', curseforgeRoutes);
+apiRouter.use('/java',       javaRoutes);
 apiRouter.use('/',           createServerRoutes(io));
 
 app.use('/api', apiRouter);

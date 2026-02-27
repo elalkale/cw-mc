@@ -84,4 +84,12 @@ export const API = {
 
   // Settings
   SETTINGS:      '/api/settings',
+
+  // Java
+  JAVA_STATUS:       '/api/java/status',
+  JAVA_DOWNLOAD:     (v: number) => `/api/java/download/${v}`,
+
+  // Server config + properties
+  SERVER_CONFIG:     (n: string) => `/api/servers/${encodeURIComponent(n)}/config`,
+  SERVER_PROPERTIES: (n: string) => `/api/servers/${encodeURIComponent(n)}/properties`,
 } as const;

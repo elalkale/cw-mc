@@ -9,6 +9,8 @@ import {
 import { API_BASE, fetchWithToken } from '../lib/api';
 import FileExplorer from './FileExplorer';
 import ModCatalog from './ModCatalog';
+import ServerConfig from './ServerConfig';
+import { Settings2 } from 'lucide-react';
 
 const LOADER_NAMES  = { 1: 'Forge', 4: 'Fabric', 5: 'Quilt', 6: 'NeoForge' };
 const LOADER_COLORS = { 1: 'bg-orange-500/15 text-orange-300 border-orange-500/25', 4: 'bg-blue-500/15 text-blue-300 border-blue-500/25', 5: 'bg-purple-500/15 text-purple-300 border-purple-500/25', 6: 'bg-yellow-500/15 text-yellow-300 border-yellow-500/25' };
@@ -445,9 +447,10 @@ export default function ServerDetail({ server, data, onStart, onStop, onForceSto
         role="tablist"
       >
         {[
-          { id: 'consola', label: 'Consola' },
-          { id: 'mods',    label: 'Mods' },
-          { id: 'gestion', label: 'Gestión' },
+          { id: 'consola',       label: 'Consola' },
+          { id: 'mods',          label: 'Mods' },
+          { id: 'gestion',       label: 'Gestión' },
+          { id: 'configuracion', label: 'Configuración' },
         ].map(t => (
           <button
             key={t.id}
@@ -828,6 +831,15 @@ export default function ServerDetail({ server, data, onStart, onStop, onForceSto
             </div>
           </div>
         </>
+      )}
+
+      {/* ── Configuración ────────────────────────────────────────────────── */}
+      {tab === 'configuracion' && (
+        <ServerConfig
+          server={server}
+          serverVersion={data.version || ''}
+          darkMode={darkMode}
+        />
       )}
 
       {/* ── Modal Clonar ─────────────────────────────────────────────────── */}

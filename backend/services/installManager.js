@@ -6,12 +6,94 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { createWriteStream } from 'fs';
-import { Readable } from 'stream';
+import { Readable, pipeline as streamPipeline } from 'stream';
+import { promisify } from 'util';
 import { CF_BASE, cfHeaders } from '../utils/curseforge.js';
 import { refreshServers } from './serverManager.js';
 
+const pipeline = promisify(streamPipeline);
+
 // Compartido por referencia: todas las rutas que lo importen ven las mismas entradas
 export const installs = {};
+
+/**
+ * Si el ZIP extrajo todo dentro de una única subcarpeta, mueve el contenido
+ * un nivel arriba para que quede directamente en destDir.
+ */
+async function flattenIfNeeded(destDir) {
+  const entries = fs.readdirSync(destDir);
+  if (entries.length !== 1) return;
+  const candidate = path.join(destDir, entries[0]);
+  if (!fs.statSync(candidate).isDirectory()) return;
+
+  for (const f of fs.readdirSync(candidate)) {
+    await fs.promises.cp(
+      path.join(candidate, f),
+      path.join(destDir, f),
+      { recursive: true }
+    );
+  }
+  await fs.promises.rm(candidate, { recursive: true, force: true });
+}
+
+/**
+ * Genera start-server.bat y start-server.sh en el directorio del servidor,
+ * configurando JAVA_HOME al JRE gestionado correcto para esa versión de MC.
+ * No sobreescribe start.bat / start.sh originales.
+ */
+async function generateStartScripts(destDir, mcVersion) {
+  const { getMcJavaVersion, getJavaDir, isJavaReady } = await import('./javaManager.js');
+  const { isWindows } = await import('../utils/platform.js');
+
+  const javaVer = getMcJavaVersion(mcVersion);
+  const javaDir = isJavaReady(javaVer) ? getJavaDir(javaVer) : null;
+  const javaNote = javaDir
+    ? `Java ${javaVer} gestionado: ${javaDir}`
+    : `Java ${javaVer} requerido — descárgalo desde el panel (Configuración → Java)`;
+
+  // ── start-server.bat (Windows) ────────────────────────────────────────────
+  const batLines = [
+    '@echo off',
+    `REM Generado por CW-MC — ${javaNote}`,
+    '',
+    javaDir
+      ? `SET "JAVA_HOME=${javaDir}"`
+      : 'REM Java gestionado no disponible, se usará el java del PATH',
+    javaDir ? 'SET "PATH=%JAVA_HOME%\\bin;%PATH%"' : '',
+    '',
+    'if exist start.bat (',
+    '  call start.bat',
+    ') else (',
+    '  echo No se encontro start.bat. Ejecuta install.bat primero.',
+    '  pause',
+    ')',
+  ].filter(l => l !== undefined).join('\r\n');
+
+  await fs.promises.writeFile(path.join(destDir, 'start-server.bat'), batLines, 'utf-8');
+
+  // ── start-server.sh (Linux / macOS) ───────────────────────────────────────
+  const shLines = [
+    '#!/usr/bin/env bash',
+    `# Generado por CW-MC — ${javaNote}`,
+    '',
+    javaDir
+      ? `export JAVA_HOME="${javaDir}"`
+      : '# Java gestionado no disponible, se usará el java del PATH',
+    javaDir ? 'export PATH="$JAVA_HOME/bin:$PATH"' : '',
+    '',
+    'if [ -f start.sh ]; then',
+    '  bash start.sh',
+    'else',
+    '  echo "No se encontró start.sh. Ejecuta install.sh primero."',
+    '  exit 1',
+    'fi',
+  ].filter(l => l !== undefined).join('\n');
+
+  await fs.promises.writeFile(path.join(destDir, 'start-server.sh'), shLines, 'utf-8');
+  if (!isWindows) {
+    try { fs.chmodSync(path.join(destDir, 'start-server.sh'), 0o755); } catch { /* ignorar */ }
+  }
+}
 
 /**
  * Descarga e instala un server pack de CurseForge en background.
@@ -41,29 +123,21 @@ export async function runInstall(installId, modId, fileId, destDir, meta) {
     const dlResp = await fetch(downloadUrl);
     if (!dlResp.ok) throw new Error(`Error descargando: ${dlResp.status}`);
 
-    await new Promise((resolve, reject) => {
-      const dest = createWriteStream(tmpFile);
-      Readable.fromWeb(dlResp.body).pipe(dest);
-      dest.on('finish', resolve);
-      dest.on('error', reject);
-    });
+    await pipeline(
+      Readable.fromWeb(dlResp.body),
+      createWriteStream(tmpFile)
+    );
 
     // 3. Extraer ZIP al directorio de destino
     fs.mkdirSync(destDir, { recursive: true });
     const { extractZip } = await import('../utils/platform.js');
     await extractZip(tmpFile, destDir);
 
+    // 3b. Aplanar si el ZIP extrajo todo en una única subcarpeta
+    await flattenIfNeeded(destDir);
+
     // 4. Limpiar temp
     fs.rmSync(tmpFile, { force: true });
-
-    // 4b. Guardar metadatos del modpack
-    if (meta) {
-      await fs.promises.writeFile(
-        path.join(destDir, 'cw-mc-modpack.json'),
-        JSON.stringify(meta, null, 2),
-        'utf-8'
-      );
-    }
 
     // 5. Ejecutar script de instalación si existe (cross-platform)
     const { spawn } = await import('child_process');
@@ -85,7 +159,20 @@ export async function runInstall(installId, modId, fileId, destDir, meta) {
       });
     }
 
-    // 6. Refrescar lista de servidores
+    // 6. Generar start-server.bat / start-server.sh con Java correcto
+    const mcVersion = meta?.gameVersions?.[0] ?? '';
+    await generateStartScripts(destDir, mcVersion);
+
+    // 7. Guardar metadatos del modpack
+    if (meta) {
+      await fs.promises.writeFile(
+        path.join(destDir, 'cw-mc-modpack.json'),
+        JSON.stringify(meta, null, 2),
+        'utf-8'
+      );
+    }
+
+    // 8. Refrescar lista de servidores
     refreshServers();
     installs[installId].status = 'done';
   } catch (err) {
