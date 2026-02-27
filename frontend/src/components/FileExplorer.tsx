@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   FolderPlus, FilePlus, Upload, ArrowLeft, Trash2,
   Download, Save, X, RefreshCw, Folder, File,
-  FileCode, FileImage, Archive, Package
+  FileCode, FileImage, Archive, Package, Coffee
 } from 'lucide-react';
 import { API_BASE, fetchWithToken } from '../lib/api';
 
@@ -15,7 +15,7 @@ const isImage = (name) => IMAGE_EXT.test(name);
 
 function FileIcon({ name, isDirectory, size = 16 }) {
   if (isDirectory) return <Folder size={size} className="text-yellow-500 shrink-0" />;
-  if (/\.(jar|java)$/.test(name)) return <Package size={size} className="text-orange-400 shrink-0" />;
+  if (/\.(jar|java)$/.test(name)) return <Coffee size={size} className="text-orange-400 shrink-0" />;
   if (isImage(name)) return <FileImage size={size} className="text-blue-400 shrink-0" />;
   if (/\.(zip|rar|7z|gz)$/.test(name)) return <Archive size={size} className="text-purple-400 shrink-0" />;
   if (/\.(json|yaml|yml|toml|cfg|conf|properties|txt|log|md)$/.test(name)) return <FileCode size={size} className="text-green-500 shrink-0" />;
