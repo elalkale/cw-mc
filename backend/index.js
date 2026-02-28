@@ -113,7 +113,7 @@ apiRouter.use('/files',      filesRoutes);
 apiRouter.use('/curseforge', curseforgeRoutes);
 apiRouter.use('/java',       javaRoutes);
 apiRouter.use('/',           createServerRoutes(io));
-apiRouter.use('/mods',       modsRoutes);
+apiRouter.use('/servers',       modsRoutes);
 
 app.use('/api', apiRouter);
 
