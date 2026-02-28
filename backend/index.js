@@ -110,10 +110,10 @@ apiRouter.get('/me', (req, res) => res.json({ loggedIn: true, user: req.user }))
 
 apiRouter.use('/settings',   settingsRoutes);
 apiRouter.use('/files',      filesRoutes);
-apiRouter.use('/servers',    modsRoutes);
 apiRouter.use('/curseforge', curseforgeRoutes);
 apiRouter.use('/java',       javaRoutes);
 apiRouter.use('/',           createServerRoutes(io));
+apiRouter.use('/mods',       modsRoutes);
 
 app.use('/api', apiRouter);
 

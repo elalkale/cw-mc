@@ -68,12 +68,8 @@ export async function generateStartScripts(destDir, mcVersion) {
       : 'REM Java gestionado no disponible, se usará el java del PATH',
     javaDir ? 'SET "PATH=%JAVA_HOME%\\bin;%PATH%"' : '',
     '',
-    'if exist start.bat (',
-    '  call start.bat',
-    ') else (',
     `  java -Xmx4G -Xms1G -jar "${serverJar}" nogui`,
     '  pause',
-    ')',
   ].filter(l => l !== undefined).join('\r\n');
 
   await fs.promises.writeFile(path.join(destDir, 'start-server.bat'), batLines, 'utf-8');
@@ -88,11 +84,7 @@ export async function generateStartScripts(destDir, mcVersion) {
       : '# Java gestionado no disponible, se usará el java del PATH',
     javaDir ? 'export PATH="$JAVA_HOME/bin:$PATH"' : '',
     '',
-    'if [ -f start.sh ]; then',
-    '  bash start.sh',
-    'else',
     `  java -Xmx4G -Xms1G -jar "${serverJar}" nogui`,
-    'fi',
   ].filter(l => l !== undefined).join('\n');
 
   await fs.promises.writeFile(path.join(destDir, 'start-server.sh'), shLines, 'utf-8');

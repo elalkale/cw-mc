@@ -1,6 +1,7 @@
 import React, { useState, useRef } from "react";
-import { LayoutGrid, List, Upload, X, Server, PackageOpen } from "lucide-react";
+import { LayoutGrid, List, Upload, X, Server, PackageOpen, Zap } from "lucide-react";
 import ServerCard from "../components/ServerCard";
+import CreateServerModal from "../components/CreateServerModal";
 import { API_BASE, fetchWithToken } from "../lib/api";
 
 function InstallingCard({ info, darkMode }) {
@@ -50,8 +51,17 @@ export default function Dashboard({ servers, startServer, stopServer, darkMode, 
   const [uploadError, setUploadError] = useState('');
   const fileInputRef = useRef(null);
 
+  const [showCreateModal, setShowCreateModal] = useState(false);
+
   const openUploadModal = () => { setUploadName(''); setUploadFile(null); setUploadError(''); setShowUploadModal(true); };
   const closeUploadModal = () => { if (uploading) return; setShowUploadModal(false); };
+
+  const openCreateModal = () => { setShowCreateModal(true); };
+  const closeCreateModal = () => { setShowCreateModal(false); };
+  const onServerCreated = () => {
+    closeCreateModal();
+    // El Dashboard se actualizará mediante polling o refresh desde el Layout
+  };
 
   const handleUpload = async () => {
     if (!uploadName.trim()) { setUploadError('El nombre no puede estar vacío'); return; }
@@ -132,6 +142,16 @@ export default function Dashboard({ servers, startServer, stopServer, darkMode, 
             {/* Botones */}
             <div className="flex items-center gap-2">
               <button
+                onClick={openCreateModal}
+                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-medium border transition-all hover:scale-[1.02] active:scale-95 ${darkMode
+                  ? 'border-purple-500/30 text-purple-300 hover:bg-purple-500/10 hover:border-purple-400/50'
+                  : 'border-purple-400/60 text-purple-700 hover:bg-purple-50 hover:border-purple-500/70'
+                }`}
+              >
+                <Zap size={14} />
+                <span className="hidden sm:inline">Crear Servidor</span>
+              </button>
+              <button
                 onClick={openUploadModal}
                 className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-medium border transition-all hover:scale-[1.02] active:scale-95 ${darkMode
                   ? 'border-purple-500/30 text-purple-300 hover:bg-purple-500/10 hover:border-purple-400/50'
@@ -180,12 +200,20 @@ export default function Dashboard({ servers, startServer, stopServer, darkMode, 
               <p className={`font-semibold text-sm mb-1 ${darkMode ? "text-gray-400" : "text-gray-600"}`}>Sin servidores</p>
               <p className="text-xs">Sube un ZIP o instala un modpack desde el catálogo.</p>
             </div>
-            <button
-              onClick={openUploadModal}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-purple-600 hover:bg-purple-500 text-white transition-colors mt-1"
-            >
-              <Upload size={14} /> Subir servidor
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={openCreateModal}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white transition-colors"
+              >
+                <Zap size={14} /> Crear servidor
+              </button>
+              <button
+                onClick={openUploadModal}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-purple-600 hover:bg-purple-500 text-white transition-colors"
+              >
+                <Upload size={14} /> Subir servidor
+              </button>
+            </div>
           </div>
         ) : (
           <div
@@ -288,6 +316,14 @@ export default function Dashboard({ servers, startServer, stopServer, darkMode, 
           </div>
         </>
       )}
+
+      {/* ── Modal crear servidor ─────────────────────────────────────────── */}
+      <CreateServerModal
+        isOpen={showCreateModal}
+        onClose={closeCreateModal}
+        darkMode={darkMode}
+        onServerCreated={onServerCreated}
+      />
     </div>
   );
 }
