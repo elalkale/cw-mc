@@ -98,7 +98,7 @@ export default function ServerCard({ server, data, onStart, onStop, darkMode }) 
   return (
     <>
     <div
-      className={`rounded-2xl border cursor-pointer transition-all flex flex-col shadow-lg hover:shadow-2xl hover:-translate-y-0.5 ${cardBg} ${expanded ? "col-span-full" : ""}`}
+      className={`relative rounded-2xl border cursor-pointer transition-all flex flex-col shadow-lg hover:shadow-2xl hover:-translate-y-0.5 ${cardBg} ${expanded ? "col-span-full" : ""} ${menuOpen ? "z-20" : ""}`}
       onClick={() => navigate(`/dashboard/${encodeURIComponent(server)}`)}
       role="article"
       aria-label={`Servidor ${server} – ${data.running ? "activo" : "detenido"}`}
