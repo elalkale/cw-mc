@@ -1,20 +1,167 @@
-import React from 'react';
-import { Download, Server, ChevronLeft, ChevronRight } from 'lucide-react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { Download, Server, ChevronLeft, ChevronRight, Search, Tag, ArrowUpDown } from 'lucide-react';
+import { fetchWithToken, API_BASE } from '../lib/api';
+import FilterSelect from './FilterSelect';
+
+const SORT_OPTIONS = [
+  { value: 'date', label: 'Más reciente' },
+  { value: 'name', label: 'Nombre A–Z' },
+  { value: 'oldest', label: 'Más antiguo' },
+];
 
 export default function VersionsTab({
-  files, loadingFiles, filesPage, setFilesPage, filesTotalCount,
-  downloadingFile, onDownloadFile,
-  installStatus, onInstallFile,
+  files: _files,
+  loadingFiles: _loadingFiles,
+  filesPage: _filesPage,
+  setFilesPage: _setFilesPage,
+  filesTotalCount: _filesTotalCount,
+  downloadingFile,
+  onDownloadFile,
+  installStatus,
+  onInstallFile,
   darkMode,
+  modId,
 }) {
-  const totalFilePages = Math.ceil(filesTotalCount / 50);
+  const [files, setFiles] = useState([]);
+  const [loadingFiles, setLoadingFiles] = useState(false);
+  const [versionFilter, setVersionFilter] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortBy, setSortBy] = useState('date');
+  const [filesPage, setFilesPage] = useState(0);
+  const FILES_PER_PAGE = 50;
+
+  // Cargar TODOS los archivos al montar
+  useEffect(() => {
+    if (!modId) return;
+    
+    setLoadingFiles(true);
+    const fetchAllFiles = async () => {
+      try {
+        const PAGE = 50;
+        const firstPageRes = await fetchWithToken(`${API_BASE}/api/curseforge/mod/${modId}/files?index=0&pageSize=${PAGE}`);
+        const firstPageData = await firstPageRes.json();
+        const first = firstPageData.data || [];
+        const total = firstPageData.pagination?.totalCount ?? first.length;
+
+        if (total <= PAGE) {
+          setFiles(first);
+        } else {
+          const extraPages = Math.ceil((total - PAGE) / PAGE);
+          const results = await Promise.all(
+            Array.from({ length: extraPages }, (_, i) =>
+              fetchWithToken(`${API_BASE}/api/curseforge/mod/${modId}/files?index=${(i + 1) * PAGE}&pageSize=${PAGE}`)
+                .then(r => r.json())
+                .then(d => d.data || [])
+                .catch(() => [])
+            )
+          );
+          setFiles([...first, ...results.flat()]);
+        }
+      } catch (error) {
+        console.error('Error fetching all files:', error);
+      } finally {
+        setLoadingFiles(false);
+      }
+    };
+
+    fetchAllFiles();
+  }, [modId]);
+
   const serverFiles = files.filter(f => f.serverPackFileId || f.isServerPack);
+
+  // Generar opciones de versión desde TODOS los archivos
+  const versionOptions = useMemo(() => {
+    const versions = [...new Set(
+      serverFiles.flatMap(f => f.gameVersions || []).filter(v => typeof v === 'string' && /^\d+\.\d+/.test(v))
+    )].sort((a, b) => {
+      const pa = (a as string).split('.').map(Number);
+      const pb = (b as string).split('.').map(Number);
+      for (let i = 0; i < 3; i++) if ((pb[i] || 0) !== (pa[i] || 0)) return (pb[i] || 0) - (pa[i] || 0);
+      return 0;
+    });
+    return [{ value: '', label: 'Todas las versiones' }, ...versions.map(v => ({ value: v as string, label: v as string }))];
+  }, [serverFiles]) as Array<{ value: string; label: string; }>;
+
+  // Aplicar filtros sobre todos los archivos
+  const filteredFiles = useMemo(() => {
+    let result = serverFiles;
+
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      result = result.filter(f => (f.displayName || f.fileName).toLowerCase().includes(query));
+    }
+
+    if (versionFilter) {
+      result = result.filter(f => (f.gameVersions || []).includes(versionFilter));
+    }
+
+    const sorted = [...result];
+    switch (sortBy) {
+      case 'date':
+        sorted.sort((a, b) => new Date(b.fileDate).getTime() - new Date(a.fileDate).getTime());
+        break;
+      case 'oldest':
+        sorted.sort((a, b) => new Date(a.fileDate).getTime() - new Date(b.fileDate).getTime());
+        break;
+      case 'name':
+        sorted.sort((a, b) => (a.displayName || a.fileName).localeCompare(b.displayName || b.fileName));
+        break;
+    }
+
+    return sorted;
+  }, [serverFiles, searchQuery, versionFilter, sortBy]);
+
+  // Reset página cuando cambian los filtros
+  useEffect(() => { setFilesPage(0); }, [searchQuery, versionFilter, sortBy]);
+
+  const totalFilePages = Math.ceil(filteredFiles.length / FILES_PER_PAGE);
+  const pagedFiles = filteredFiles.slice(filesPage * FILES_PER_PAGE, (filesPage + 1) * FILES_PER_PAGE);
 
   return (
     <>
-      {filesTotalCount > 0 && (
+      {/* ── Filtros ──────────────────────────────────────────────────────────── */}
+      <div className={`flex flex-col sm:flex-row flex-wrap gap-2.5 mb-6 p-3 rounded-2xl border ${darkMode ? 'bg-gray-800/40 border-gray-700/50' : 'bg-white/70 border-gray-200/80 shadow-sm'}`}>
+        {/* Búsqueda */}
+        <div className="relative flex-1 min-w-[200px]">
+          <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          <input
+            type="text"
+            placeholder="Buscar versión..."
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            className={`w-full pl-9 pr-3 py-2 rounded-xl border text-sm transition-all focus:outline-none ${darkMode
+              ? 'bg-gray-800/80 border-gray-700/80 text-gray-200 placeholder-gray-500 focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/20'
+              : 'bg-white border-gray-200 text-gray-900 placeholder-gray-400 focus:border-purple-400 focus:ring-1 focus:ring-purple-300/30'
+            }`}
+            aria-label="Buscar versión por nombre"
+          />
+        </div>
+
+        <FilterSelect 
+          value={versionFilter} 
+          onChange={(v) => setVersionFilter(String(v))} 
+          options={versionOptions} 
+          placeholder="Versión" 
+          icon={Tag}
+          darkMode={darkMode} 
+        />
+        <FilterSelect 
+          value={sortBy} 
+          onChange={(v) => setSortBy(String(v))} 
+          options={SORT_OPTIONS} 
+          placeholder="Ordenar" 
+          icon={ArrowUpDown}
+          darkMode={darkMode} 
+        />
+      </div>
+
+      {/* ── Contador ─────────────────────────────────────────────────────────── */}
+      {filteredFiles.length > 0 && (
         <p className={`text-xs mb-4 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-          <span className={`font-semibold ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{filesTotalCount.toLocaleString()}</span> archivos · página {filesPage + 1} de {totalFilePages}
+          <span className={`font-semibold ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{filteredFiles.length.toLocaleString()}</span> archivos
+          {searchQuery && ` · búsqueda: "${searchQuery}"`}
+          {versionFilter && ` · versión: ${versionFilter}`}
+          {totalFilePages > 1 && ` · página ${filesPage + 1} de ${totalFilePages}`}
         </p>
       )}
 
@@ -24,8 +171,10 @@ export default function VersionsTab({
             <div key={i} className={`h-10 rounded-xl animate-pulse ${darkMode ? 'bg-gray-700/50' : 'bg-gray-200'}`} />
           ))}
         </div>
-      ) : serverFiles.length === 0 ? (
-        <p className={`text-sm ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>No hay server packs disponibles en esta página.</p>
+      ) : filteredFiles.length === 0 ? (
+        <p className={`text-sm ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
+          No hay resultados para este filtro.
+        </p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -38,7 +187,7 @@ export default function VersionsTab({
               </tr>
             </thead>
             <tbody className={`divide-y ${darkMode ? 'divide-gray-700/40' : 'divide-gray-200'}`}>
-              {serverFiles.map(file => (
+              {pagedFiles.map(file => (
                 <tr key={file.id} className={`transition-colors ${darkMode ? 'hover:bg-purple-500/5' : 'hover:bg-purple-50/60'}`}>
                   <td className="py-3 pr-4">
                     <span className={`line-clamp-1 text-xs font-medium ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
@@ -92,7 +241,7 @@ export default function VersionsTab({
         </div>
       )}
 
-      {filesTotalCount > 50 && (
+      {filteredFiles.length > FILES_PER_PAGE && (
         <div className="flex items-center justify-center gap-3 mt-5">
           <button
             onClick={() => setFilesPage(p => Math.max(0, p - 1))}

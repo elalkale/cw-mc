@@ -338,6 +338,7 @@ export default function ModpackDetail({ darkMode, onInstallStart, onInstallClear
               installStatus={installStatus}
               onInstallFile={(fileId, fileLabel, fileVersions) => openInstallModal(fileId, fileLabel, localPack.slug, fileVersions)}
               darkMode={darkMode}
+              modId={modId}
             />
           )}
 
