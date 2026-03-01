@@ -34,7 +34,68 @@ async function getPasswordHash() {
   return passwordHash;
 }
 
-// POST /login
+/**
+ * @swagger
+ * /api/login:
+ *   post:
+ *     summary: Iniciar sesión y obtener un token JWT
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               username:
+ *                 type: string
+ *               password:
+ *                 type: string
+ *
+ *     responses:
+ *       200:
+ *         description: Inicio de sesión exitoso
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok:
+ *                   type: boolean
+ *                 token:
+ *                   type: string
+ *                 loggedIn:
+ *                   type: boolean
+ *
+ *       400:
+ *         description: Error de autenticación
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                 loggedIn:
+ *                   type: boolean
+ *
+ *       429:
+ *         description: Demasiados intentos de inicio de sesión
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                 loggedIn:
+ *                   type: boolean
+ *             examples:
+ *               tooManyAttempts:
+ *                 summary: Demasiados intentos
+ *                 value:
+ *                   error: Demasiados intentos de inicio de sesión. Inténtalo de nuevo en 15 minutos.
+ *                   loggedIn: false
+ */
 router.post('/login', loginLimiter, async (req, res) => {
   const { username, password } = req.body;
 
@@ -53,7 +114,34 @@ router.post('/login', loginLimiter, async (req, res) => {
   res.json({ ok: true, token, loggedIn: true });
 });
 
-// POST /logout
+/**
+ * @swagger
+ * /api/logout:
+ *   post:
+ *     summary: Cerrar sesión (en el cliente, simplemente eliminar el token)
+ *     responses:
+ *       200:
+ *         description: Cierre de sesión exitoso
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok:
+ *                   type: boolean
+ *                   example: true
+ *
+ *       400:
+ *         description: Error al cerrar sesión
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: No se pudo cerrar sesión
+ */
 router.post('/logout', (_req, res) => res.json({ ok: true }));
 
 // GET /api/me

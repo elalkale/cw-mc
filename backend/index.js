@@ -29,6 +29,10 @@ import curseforgeRoutes        from './routes/curseforge.js';
 import javaRoutes              from './routes/java.js';
 import { createServerRoutes, shutdown } from './routes/servers.js';
 
+// ── Documentación Swagger ─────────────────────────────────────────────────────
+import swaggerUi from 'swagger-ui-express';
+import swaggerSpec from './swagger.js';
+
 // ── Express + HTTP Server ─────────────────────────────────────────────────────
 const app        = express();
 const httpServer = http.createServer(app);
@@ -116,6 +120,10 @@ apiRouter.use('/',           createServerRoutes(io));
 apiRouter.use('/servers',       modsRoutes);
 
 app.use('/api', apiRouter);
+
+// ── Documentación Swagger ─────────────────────────────────────────────────────
+
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 // ── Servir frontend en producción ─────────────────────────────────────────────
 const distPath = path.join(PROJECT_ROOT, 'dist');
