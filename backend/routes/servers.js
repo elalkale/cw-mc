@@ -651,19 +651,26 @@ export function createServerRoutes(io) {
     if (modLoader === 'vanilla') {
       // Descarga desde launcher.mojang.com
       try {
-        const manifestRes = await axios.get('https://launcher.mojang.com/v1/objects/8f3112a1311e4c80fce50aee56658498d1dcbda4/version_manifest.json');
+        const manifestRes = await axios.get('https://piston-meta.mojang.com/mc/game/version_manifest_v2.json');
         const manifest = manifestRes.data;
-        const versionObj = manifest.versions.find(v => v.id === version);
-        if (!versionObj) throw new Error(`Versión vanilla ${version} no encontrada`);
+        const versionInfo = manifest.versions.find(v => v.id === version);
+        console.log(`[VANILLA] Encontrada versión ${version}: ${versionInfo ? versionInfo.id : 'no encontrada'}`);
+        console.log(`[VANILLA] URL de versión: ${versionInfo ? versionInfo.url : 'no disponible'}`);
 
-        const versionRes = await axios.get(versionObj.url);
-        const versionData = versionRes.data;
-
-        const serverRes = await axios.get(versionData.downloads.server.url, { responseType: 'arraybuffer' });
-        await fs.promises.writeFile(destPath, serverRes.data);
+      
+        if (!versionInfo) throw new Error(`Versión ${versionInfo.id} no encontrada en el manifest de Mojang`);
+        const jsonVersion = await axios.get(versionInfo.url);
+        console.log(`[VANILLA] URL de descarga del server.jar: ${jsonVersion.data.downloads.server.url}`);
+        const serverJarURL = jsonVersion.data.downloads.server.url;
+        
+        const res = await axios.get(serverJarURL, {
+          responseType: 'arraybuffer',
+          timeout: 30000,
+        });
+        await fs.promises.writeFile(destPath, res.data);
         return;
       } catch (err) {
-        throw new Error(`Error descargando vanilla ${version}: ${err.message}`);
+        throw new Error(`Error descargando Minecraft ${version}: ${err.message}`);
       }
     }
 
@@ -867,7 +874,7 @@ export function createServerRoutes(io) {
     try {
       if (modLoader === 'vanilla') {
         console.log('[VANILLA] Obteniendo versiones...');
-        const manifestRes = await axios.get('https://launcher.mojang.com/v1/objects/8f3112a1311e4c80fce50aee56658498d1dcbda4/version_manifest.json');
+        const manifestRes = await axios.get('https://piston-meta.mojang.com/mc/game/version_manifest_v2.json');
         const versions = manifestRes.data.versions
           .filter(v => /^\d+\.\d+/.test(v.id) && v.type === 'release')
           .map(v => v.id)
@@ -1082,7 +1089,7 @@ export function createServerRoutes(io) {
       } catch (jarErr) {
         // Si no se puede descargar, crear un archivo stub
         console.warn(`Error descargando server.jar: ${jarErr.message}`);
-        const stubMsg = `ADVERTENCIA: No se pudo descargar automaticamente la JAR para ${modLoader} ${version}.\n\nInstrucciones:\n${jarErr.message}\n\nDescargá y colocá el archivo como 'server.jar' en este directorio.`;
+        const stubMsg = `ADVERTENCIA: No se pudo descargar automaticamente la JAR para ${modLoader} ${version}.\n\nInstrucciones:\n${jarErr.message}\n\nDescarga y coloca el archivo como 'server.jar' en este directorio.`;
         await fs.promises.writeFile(jarPath, '', 'utf-8');
         await fs.promises.writeFile(
           path.join(serverDir, 'JAR_DOWNLOAD_ERROR.txt'),

@@ -23,7 +23,7 @@ const RAM_OPTIONS = [
 
 export default function CreateServerModal({ isOpen, onClose, darkMode, onServerCreated }) {
   const [serverName, setServerName] = useState('');
-  const [modLoader, setModLoader] = useState('fabric');
+  const [modLoader, setModLoader] = useState('vanilla');
   const [mcVersion, setMcVersion] = useState('');
   const [loaderVersion, setLoaderVersion] = useState('');
   const [ramMb, setRamMb] = useState('2048');
