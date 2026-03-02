@@ -70,19 +70,24 @@ io.on('connection', socket => {
   });
 
   socket.on('command', ({ server: serverName, command }) => {
-    const state = servers[serverName];
-    if (!state) return socket.emit('cmd_error', { server: serverName, error: 'Servidor desconocido' });
+    try {
+      const state = servers[serverName];
+      if (!state) return socket.emit('cmd_error', { server: serverName, error: 'Servidor desconocido' });
 
-    if (!state.process || state.process.killed) {
-      state.commandQueue.push(command);
-      return socket.emit('cmd_queued', { server: serverName, command });
-    }
-    if (state.process.stdin) {
-      state.process.stdin.write(command + '\n');
-      socket.emit('cmd_sent', { server: serverName, command });
-    } else {
-      state.commandQueue.push(command);
-      socket.emit('cmd_queued', { server: serverName, command });
+      if (!state.process || state.process.killed) {
+        state.commandQueue.push(command);
+        return socket.emit('cmd_queued', { server: serverName, command });
+      }
+      if (state.process.stdin && !state.process.stdin.destroyed) {
+        state.process.stdin.write(command + '\n');
+        socket.emit('cmd_sent', { server: serverName, command });
+      } else {
+        state.commandQueue.push(command);
+        socket.emit('cmd_queued', { server: serverName, command });
+      }
+    } catch (err) {
+      console.error(`[Socket] Error enviando comando a ${serverName}:`, err.message);
+      socket.emit('cmd_error', { server: serverName, error: err.message });
     }
   });
 });
@@ -142,6 +147,15 @@ refreshServers();
 // ── Graceful shutdown ─────────────────────────────────────────────────────────
 process.on('SIGINT',  () => shutdown('SIGINT'));
 process.on('SIGTERM', () => shutdown('SIGTERM'));
+
+// ── Guardia global contra crasheos ────────────────────────────────────────────
+process.on('uncaughtException', (err) => {
+  console.error('[FATAL] Excepción no capturada — el servidor sigue en pie:', err);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[FATAL] Promesa rechazada sin capturar — el servidor sigue en pie:', reason);
+});
 
 // ── Arrancar ──────────────────────────────────────────────────────────────────
 httpServer.listen(PORT, () => {

@@ -21,19 +21,23 @@ export const installs = {};
  * un nivel arriba para que quede directamente en destDir.
  */
 async function flattenIfNeeded(destDir) {
-  const entries = fs.readdirSync(destDir);
-  if (entries.length !== 1) return;
-  const candidate = path.join(destDir, entries[0]);
-  if (!fs.statSync(candidate).isDirectory()) return;
+  try {
+    const entries = fs.readdirSync(destDir);
+    if (entries.length !== 1) return;
+    const candidate = path.join(destDir, entries[0]);
+    if (!fs.statSync(candidate).isDirectory()) return;
 
-  for (const f of fs.readdirSync(candidate)) {
-    await fs.promises.cp(
-      path.join(candidate, f),
-      path.join(destDir, f),
-      { recursive: true }
-    );
+    for (const f of fs.readdirSync(candidate)) {
+      await fs.promises.cp(
+        path.join(candidate, f),
+        path.join(destDir, f),
+        { recursive: true }
+      );
+    }
+    await fs.promises.rm(candidate, { recursive: true, force: true });
+  } catch (err) {
+    console.warn('[flattenIfNeeded] No se pudo aplanar la estructura del ZIP:', err.message);
   }
-  await fs.promises.rm(candidate, { recursive: true, force: true });
 }
 
 /**

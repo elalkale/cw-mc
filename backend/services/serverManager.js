@@ -63,6 +63,7 @@ export function getServerPort(dir) {
  * Añade servidores nuevos, elimina los que ya no existen y no están corriendo.
  */
 export function refreshServers() {
+  try {
   const serverRoot = _serverRoot;
 
   if (!fs.existsSync(serverRoot)) {
@@ -116,6 +117,9 @@ export function refreshServers() {
       // Actualizar modpack por si cw-mc-modpack.json fue creado/modificado
       servers[folder].cfg.modpack = modpack;
     }
+  }
+  } catch (err) {
+    console.error('[refreshServers] Error leyendo el directorio de servidores:', err.message);
   }
 }
 

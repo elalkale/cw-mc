@@ -14,7 +14,8 @@ export const isWindows = process.platform === 'win32';
  */
 export function killProcess(pid) {
   if (isWindows) {
-    spawn('taskkill', ['/PID', String(pid), '/T', '/F'], { shell: false });
+    const tk = spawn('taskkill', ['/PID', String(pid), '/T', '/F'], { shell: false });
+    tk.on('error', (err) => console.warn(`[killProcess] taskkill falló para PID ${pid}:`, err.message));
   } else {
     try {
       // -pid = matar grupo de procesos (árbol completo)
