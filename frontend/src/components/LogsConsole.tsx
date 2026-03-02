@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 export default function LogsConsole({ server, socket }) {
   const [logs, setLogs] = useState('');
@@ -25,8 +25,10 @@ export default function LogsConsole({ server, socket }) {
     };
   }, [server, socket]);
 
-  useEffect(() => {
-    if (preRef.current) preRef.current.scrollTop = preRef.current.scrollHeight;
+  useLayoutEffect(() => {
+    const el = preRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
   }, [logs]);
 
   return <pre ref={preRef} className="logs">{logs}</pre>;

@@ -72,6 +72,12 @@ export default function ServerDetail({ server, data, onStart, onStop, onForceSto
     if (preRef.current) preRef.current.scrollTop = preRef.current.scrollHeight;
   }, [logs]);
 
+  useEffect(() => {
+    if (tab === 'consola' && preRef.current) {
+      preRef.current.scrollTop = preRef.current.scrollHeight;
+    }
+  }, [tab]);
+
   const sendCommand = () => {
     if (command && socket.current) {
       socket.current.emit('command', { server, command });
@@ -536,7 +542,7 @@ export default function ServerDetail({ server, data, onStart, onStop, onForceSto
                 </span>
               )}
             </div>
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1 ">
               <input
                 ref={modUploadRef}
                 type="file"
@@ -627,7 +633,7 @@ export default function ServerDetail({ server, data, onStart, onStop, onForceSto
               </p>
             </div>
           ) : (
-            <div className="flex flex-col gap-1 max-h-72 overflow-y-auto custom-scrollbar pr-1">
+            <div className="flex flex-col gap-1 min-h-[8rem] max-h-[calc(100vh-540px)] overflow-y-auto custom-scrollbar pr-1">
               {filteredMods.map(mod => (
                 <div
                   key={mod.filename}
