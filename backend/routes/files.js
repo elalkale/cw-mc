@@ -13,6 +13,51 @@ import { resolveSafePath } from '../utils/pathValidator.js';
 const router = express.Router();
 const upload = multer({ dest: os.tmpdir() });
 
+/**
+ * @swagger
+ * /api/files/{name}:
+ *   get:
+ *     summary: Listar el contenido de un directorio del servidor
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: name
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Nombre del servidor
+ *       - in: query
+ *         name: path
+ *         schema:
+ *           type: string
+ *         description: Ruta relativa dentro del servidor (por defecto /)
+ *     responses:
+ *       200:
+ *         description: Listado de archivos y carpetas
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok:
+ *                   type: boolean
+ *                 currentPath:
+ *                   type: string
+ *                 items:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       name:
+ *                         type: string
+ *                       isDirectory:
+ *                         type: boolean
+ *       403:
+ *         description: Acceso denegado (path traversal)
+ *       404:
+ *         description: Servidor o ruta no encontrada
+ */
 // GET /api/files/:name?path=...
 router.get('/:name', async (req, res) => {
   const state = servers[req.params.name];
@@ -38,6 +83,46 @@ router.get('/:name', async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/files/{name}/content:
+ *   get:
+ *     summary: Leer el contenido de un archivo del servidor
+ *     description: Para archivos de texto devuelve JSON con el contenido. Para imágenes devuelve el archivo directamente.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: name
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Nombre del servidor
+ *       - in: query
+ *         name: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Ruta relativa al archivo
+ *     responses:
+ *       200:
+ *         description: Contenido del archivo
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok:
+ *                   type: boolean
+ *                 content:
+ *                   type: string
+ *       400:
+ *         description: Falta el parámetro path o la ruta es una carpeta
+ *       403:
+ *         description: Acceso denegado
+ *       404:
+ *         description: Servidor o archivo no encontrado
+ */
 // GET /api/files/:name/content?path=...
 router.get('/:name/content', async (req, res) => {
   const state = servers[req.params.name];
@@ -66,6 +151,56 @@ router.get('/:name/content', async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/files/{name}/content:
+ *   put:
+ *     summary: Guardar el contenido de un archivo del servidor
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: name
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Ruta relativa al archivo a escribir
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [content]
+ *             properties:
+ *               content:
+ *                 type: string
+ *                 description: Contenido del archivo (texto plano o base64)
+ *               isBase64:
+ *                 type: boolean
+ *                 description: Si es true, content se interpreta como base64
+ *     responses:
+ *       200:
+ *         description: Archivo guardado
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok:
+ *                   type: boolean
+ *       400:
+ *         description: Falta path, contenido, o la ruta es una carpeta
+ *       403:
+ *         description: Acceso denegado
+ *       404:
+ *         description: Servidor no encontrado
+ */
 // PUT /api/files/:name/content?path=...
 router.put('/:name/content', async (req, res) => {
   const state = servers[req.params.name];
@@ -97,6 +232,40 @@ router.put('/:name/content', async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/files/{name}/content:
+ *   delete:
+ *     summary: Eliminar un archivo o carpeta del servidor
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: name
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Ruta relativa al archivo o carpeta a eliminar
+ *     responses:
+ *       200:
+ *         description: Archivo o carpeta eliminada
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok:
+ *                   type: boolean
+ *       403:
+ *         description: Acceso denegado (no se puede eliminar la raíz)
+ *       404:
+ *         description: Servidor o archivo no encontrado
+ */
 // DELETE /api/files/:name/content?path=...
 router.delete('/:name/content', async (req, res) => {
   const state = servers[req.params.name];
@@ -119,6 +288,53 @@ router.delete('/:name/content', async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/files/{name}/folder:
+ *   post:
+ *     summary: Crear una nueva carpeta dentro del servidor
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: name
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Ruta relativa del directorio padre
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [folderName]
+ *             properties:
+ *               folderName:
+ *                 type: string
+ *                 description: Nombre de la nueva carpeta
+ *     responses:
+ *       200:
+ *         description: Carpeta creada
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok:
+ *                   type: boolean
+ *       400:
+ *         description: Faltan parámetros o la carpeta ya existe
+ *       403:
+ *         description: Acceso denegado
+ *       404:
+ *         description: Servidor no encontrado
+ */
 // POST /api/files/:name/folder?path=...
 router.post('/:name/folder', async (req, res) => {
   const state = servers[req.params.name];
@@ -140,6 +356,53 @@ router.post('/:name/folder', async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/files/{name}/file:
+ *   post:
+ *     summary: Crear un archivo vacío en el servidor
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: name
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Ruta relativa del directorio donde se creará el archivo
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [fileName]
+ *             properties:
+ *               fileName:
+ *                 type: string
+ *                 description: Nombre del nuevo archivo
+ *     responses:
+ *       200:
+ *         description: Archivo creado vacío
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok:
+ *                   type: boolean
+ *       400:
+ *         description: Faltan parámetros o el archivo ya existe
+ *       403:
+ *         description: Acceso denegado
+ *       404:
+ *         description: Servidor no encontrado
+ */
 // POST /api/files/:name/file?path=...
 router.post('/:name/file', async (req, res) => {
   const state = servers[req.params.name];
@@ -162,6 +425,52 @@ router.post('/:name/file', async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/files/{name}/upload:
+ *   post:
+ *     summary: Subir un archivo al servidor
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: name
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: path
+ *         schema:
+ *           type: string
+ *         description: Directorio destino dentro del servidor (por defecto /)
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required: [file]
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: Archivo subido correctamente
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok:
+ *                   type: boolean
+ *       400:
+ *         description: No se envió ningún archivo
+ *       403:
+ *         description: Acceso denegado
+ *       404:
+ *         description: Servidor no encontrado
+ */
 // POST /api/files/:name/upload?path=...
 router.post('/:name/upload', upload.single('file'), async (req, res) => {
   const state = servers[req.params.name];
@@ -190,6 +499,39 @@ router.post('/:name/upload', upload.single('file'), async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/files/{name}/download:
+ *   get:
+ *     summary: Descargar un archivo del servidor
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: name
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: path
+ *         schema:
+ *           type: string
+ *         description: Ruta relativa al archivo a descargar (por defecto /)
+ *     responses:
+ *       200:
+ *         description: Descarga del archivo
+ *         content:
+ *           application/octet-stream:
+ *             schema:
+ *               type: string
+ *               format: binary
+ *       400:
+ *         description: La ruta apunta a una carpeta
+ *       403:
+ *         description: Acceso denegado
+ *       404:
+ *         description: Servidor no encontrado
+ */
 // GET /api/files/:name/download?path=...
 router.get('/:name/download', async (req, res) => {
   const state = servers[req.params.name];

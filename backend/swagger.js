@@ -16,6 +16,17 @@ const options = {
     servers: [
       { url: 'http://localhost:4000', description: 'Servidor local' },
     ],
+    components: {
+      securitySchemes: {
+        bearerAuth: {
+          type: 'http',
+          scheme: 'bearer',
+          bearerFormat: 'JWT',
+          description: 'Token JWT obtenido desde POST /api/login',
+        },
+      },
+    },
+    security: [{ bearerAuth: [] }],
   },
 
   // ✅ ruta REAL relativa a swagger.js

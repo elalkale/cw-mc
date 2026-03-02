@@ -86,6 +86,44 @@ const upload = multer({ dest: os.tmpdir() });
 export function createServerRoutes(io) {
   const router = express.Router();
 
+  /**
+   * @swagger
+   * /api/status:
+   *   get:
+   *     summary: Obtener el estado de todos los servidores registrados
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       200:
+   *         description: Mapa de servidores con su estado actual
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               additionalProperties:
+   *                 type: object
+   *                 properties:
+   *                   running:
+   *                     type: boolean
+   *                   pid:
+   *                     type: integer
+   *                     nullable: true
+   *                   version:
+   *                     type: string
+   *                   icon:
+   *                     type: string
+   *                     nullable: true
+   *                   modpack:
+   *                     type: string
+   *                     nullable: true
+   *                   players:
+   *                     type: object
+   *                     properties:
+   *                       online:
+   *                         type: integer
+   *                       max:
+   *                         type: integer
+   */
   // GET /api/status
   router.get('/status', async (_req, res) => {
     refreshServers();
@@ -112,6 +150,43 @@ export function createServerRoutes(io) {
     res.json(result);
   });
 
+  /**
+   * @swagger
+   * /api/start:
+   *   post:
+   *     summary: Iniciar un servidor de Minecraft
+   *     security:
+   *       - bearerAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required: [name]
+   *             properties:
+   *               name:
+   *                 type: string
+   *                 description: Nombre del servidor
+   *     responses:
+   *       200:
+   *         description: Servidor iniciado correctamente
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 ok:
+   *                   type: boolean
+   *                 pid:
+   *                   type: integer
+   *       400:
+   *         description: El servidor ya está en ejecución
+   *       404:
+   *         description: Servidor no encontrado
+   *       500:
+   *         description: Error al iniciar el proceso
+   */
   // POST /api/start
   router.post('/start', async (req, res) => {
     refreshServers();
@@ -201,6 +276,41 @@ export function createServerRoutes(io) {
     res.json({ ok: true, pid: child.pid });
   });
 
+  /**
+   * @swagger
+   * /api/stop:
+   *   post:
+   *     summary: Detener un servidor de Minecraft de forma ordenada (envía "stop" por stdin)
+   *     security:
+   *       - bearerAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required: [name]
+   *             properties:
+   *               name:
+   *                 type: string
+   *     responses:
+   *       200:
+   *         description: Servidor detenido
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 ok:
+   *                   type: boolean
+   *                 method:
+   *                   type: string
+   *                   enum: [stdin, kill]
+   *       400:
+   *         description: El servidor no está en ejecución
+   *       404:
+   *         description: Servidor no encontrado
+   */
   // POST /api/stop
   router.post('/stop', (req, res) => {
     refreshServers();
@@ -221,6 +331,41 @@ export function createServerRoutes(io) {
     }
   });
 
+  /**
+   * @swagger
+   * /api/force-stop:
+   *   post:
+   *     summary: Forzar la detención de un servidor (kill del proceso)
+   *     security:
+   *       - bearerAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required: [name]
+   *             properties:
+   *               name:
+   *                 type: string
+   *     responses:
+   *       200:
+   *         description: Proceso terminado forzosamente
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 ok:
+   *                   type: boolean
+   *                 method:
+   *                   type: string
+   *                   example: kill
+   *       400:
+   *         description: El servidor no está en ejecución
+   *       404:
+   *         description: Servidor no encontrado
+   */
   // POST /api/force-stop
   router.post('/force-stop', (req, res) => {
     refreshServers();
@@ -237,6 +382,30 @@ export function createServerRoutes(io) {
     }
   });
 
+  /**
+   * @swagger
+   * /api/logs/{name}:
+   *   get:
+   *     summary: Obtener el historial de logs de un servidor
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: name
+   *         required: true
+   *         schema:
+   *           type: string
+   *         description: Nombre del servidor
+   *     responses:
+   *       200:
+   *         description: Texto plano con todos los logs desde el último inicio
+   *         content:
+   *           text/plain:
+   *             schema:
+   *               type: string
+   *       404:
+   *         description: Servidor no encontrado
+   */
   // GET /api/logs/:name
   router.get('/logs/:name', (req, res) => {
     const state = servers[req.params.name];
@@ -244,6 +413,53 @@ export function createServerRoutes(io) {
     res.send(state.logs);
   });
 
+  /**
+   * @swagger
+   * /api/command:
+   *   post:
+   *     summary: Enviar un comando a la consola de un servidor
+   *     description: Si el servidor no está corriendo, el comando se encola para ejecutarse al arrancar.
+   *     security:
+   *       - bearerAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required: [name, command]
+   *             properties:
+   *               name:
+   *                 type: string
+   *               command:
+   *                 type: string
+   *                 example: say Hola mundo
+   *     responses:
+   *       200:
+   *         description: Comando enviado por stdin
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 ok:
+   *                   type: boolean
+   *                 sent:
+   *                   type: string
+   *       202:
+   *         description: Comando encolado (servidor no activo)
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 ok:
+   *                   type: boolean
+   *                 queued:
+   *                   type: boolean
+   *       404:
+   *         description: Servidor no encontrado
+   */
   // POST /api/command
   router.post('/command', (req, res) => {
     const { name, command } = req.body;
@@ -266,6 +482,33 @@ export function createServerRoutes(io) {
 
   // ── Backups ────────────────────────────────────────────────────────────────
 
+  /**
+   * @swagger
+   * /api/backup/{name}:
+   *   get:
+   *     summary: Descargar un backup ZIP completo del servidor
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: name
+   *         required: true
+   *         schema:
+   *           type: string
+   *         description: Nombre del servidor
+   *     responses:
+   *       200:
+   *         description: Archivo ZIP con el contenido completo del servidor
+   *         content:
+   *           application/zip:
+   *             schema:
+   *               type: string
+   *               format: binary
+   *       404:
+   *         description: Servidor no encontrado
+   *       500:
+   *         description: Error al crear el archivo ZIP
+   */
   // GET /api/backup/:name
   router.get('/backup/:name', async (req, res) => {
     const state = servers[req.params.name];
@@ -286,6 +529,38 @@ export function createServerRoutes(io) {
     }
   });
 
+  /**
+   * @swagger
+   * /api/backup/{name}/local:
+   *   post:
+   *     summary: Crear un backup local del mundo en la carpeta backups/ del servidor
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: name
+   *         required: true
+   *         schema:
+   *           type: string
+   *         description: Nombre del servidor
+   *     responses:
+   *       200:
+   *         description: Backup guardado localmente
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 ok:
+   *                   type: boolean
+   *                 filename:
+   *                   type: string
+   *                   example: world_backup_2024-01-15T10-30-00.zip
+   *       404:
+   *         description: Servidor no encontrado
+   *       500:
+   *         description: Error al crear el backup
+   */
   // POST /api/backup/:name/local
   router.post('/backup/:name/local', async (req, res) => {
     const state = servers[req.params.name];
@@ -322,6 +597,37 @@ export function createServerRoutes(io) {
 
   // ── Gestión de servidores ──────────────────────────────────────────────────
 
+  /**
+   * @swagger
+   * /api/servers/{name}:
+   *   delete:
+   *     summary: Eliminar un servidor y todos sus archivos permanentemente
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: name
+   *         required: true
+   *         schema:
+   *           type: string
+   *         description: Nombre del servidor (URL-encoded)
+   *     responses:
+   *       200:
+   *         description: Servidor eliminado
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 ok:
+   *                   type: boolean
+   *       400:
+   *         description: El servidor debe detenerse antes de eliminarlo
+   *       404:
+   *         description: Servidor no encontrado
+   *       500:
+   *         description: Error al eliminar archivos
+   */
   // DELETE /api/servers/:name
   router.delete('/servers/:name', async (req, res) => {
     const name = decodeURIComponent(req.params.name);
@@ -340,6 +646,48 @@ export function createServerRoutes(io) {
     }
   });
 
+  /**
+   * @swagger
+   * /api/servers/{name}/clone:
+   *   post:
+   *     summary: Clonar un servidor existente con un nuevo nombre
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: name
+   *         required: true
+   *         schema:
+   *           type: string
+   *         description: Nombre del servidor origen
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required: [newName]
+   *             properties:
+   *               newName:
+   *                 type: string
+   *                 description: Nombre del nuevo servidor clonado
+   *     responses:
+   *       200:
+   *         description: Servidor clonado correctamente
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 ok:
+   *                   type: boolean
+   *       400:
+   *         description: El servidor debe estar detenido o falta el nombre nuevo
+   *       404:
+   *         description: Servidor origen no encontrado
+   *       409:
+   *         description: Ya existe un servidor con ese nombre
+   */
   // POST /api/servers/:name/clone
   router.post('/servers/:name/clone', async (req, res) => {
     const name = decodeURIComponent(req.params.name);
@@ -365,6 +713,45 @@ export function createServerRoutes(io) {
     }
   });
 
+  /**
+   * @swagger
+   * /api/servers/upload:
+   *   post:
+   *     summary: Importar un servidor desde un archivo ZIP
+   *     security:
+   *       - bearerAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         multipart/form-data:
+   *           schema:
+   *             type: object
+   *             required: [file, serverName]
+   *             properties:
+   *               file:
+   *                 type: string
+   *                 format: binary
+   *                 description: Archivo ZIP con el contenido del servidor
+   *               serverName:
+   *                 type: string
+   *                 description: Nombre que tendrá el servidor importado
+   *     responses:
+   *       200:
+   *         description: Servidor importado correctamente
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 ok:
+   *                   type: boolean
+   *       400:
+   *         description: Falta el nombre del servidor o el archivo
+   *       409:
+   *         description: Ya existe un servidor con ese nombre
+   *       500:
+   *         description: Error al extraer el ZIP
+   */
   // POST /api/servers/upload — extrae un ZIP como nuevo servidor (cross-platform)
   router.post('/servers/upload', upload.single('file'), async (req, res) => {
     const serverName = req.body?.serverName?.trim();
@@ -405,6 +792,49 @@ export function createServerRoutes(io) {
 
   // ── Instalación de server packs ────────────────────────────────────────────
 
+  /**
+   * @swagger
+   * /api/install:
+   *   post:
+   *     summary: Iniciar la instalación de un server pack de CurseForge en background
+   *     security:
+   *       - bearerAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required: [modId, fileId, serverName]
+   *             properties:
+   *               modId:
+   *                 type: integer
+   *                 description: ID del modpack en CurseForge
+   *               fileId:
+   *                 type: integer
+   *                 description: ID del archivo específico a instalar
+   *               serverName:
+   *                 type: string
+   *                 description: Nombre del servidor a crear
+   *               meta:
+   *                 type: object
+   *                 description: Metadatos adicionales opcionales
+   *     responses:
+   *       200:
+   *         description: Instalación iniciada — use installId para hacer polling
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 installId:
+   *                   type: string
+   *                   format: uuid
+   *       400:
+   *         description: Faltan parámetros requeridos
+   *       409:
+   *         description: Ya existe un servidor con ese nombre
+   */
   // POST /api/install
   router.post('/install', (req, res) => {
     const { modId, fileId, serverName, meta } = req.body;
@@ -425,6 +855,40 @@ export function createServerRoutes(io) {
     res.json({ installId });
   });
 
+  /**
+   * @swagger
+   * /api/install/{installId}:
+   *   get:
+   *     summary: Consultar el estado de una instalación en curso
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: installId
+   *         required: true
+   *         schema:
+   *           type: string
+   *           format: uuid
+   *         description: ID de la instalación devuelto por POST /api/install
+   *     responses:
+   *       200:
+   *         description: Estado actual de la instalación
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 status:
+   *                   type: string
+   *                   enum: [pending, downloading, extracting, done, error]
+   *                 error:
+   *                   type: string
+   *                   nullable: true
+   *                 serverName:
+   *                   type: string
+   *       404:
+   *         description: Instalación no encontrada
+   */
   // GET /api/install/:installId
   router.get('/install/:installId', (req, res) => {
     const entry = installs[req.params.installId];
@@ -434,6 +898,55 @@ export function createServerRoutes(io) {
 
   // ── Configuración por servidor (Java path) ────────────────────────────────
 
+  /**
+   * @swagger
+   * /api/servers/{name}/config:
+   *   get:
+   *     summary: Obtener la configuración de arranque de un servidor (Java path, JAR, script)
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: name
+   *         required: true
+   *         schema:
+   *           type: string
+   *         description: Nombre del servidor
+   *     responses:
+   *       200:
+   *         description: Configuración actual del servidor
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 javaPath:
+   *                   type: string
+   *                   nullable: true
+   *                 requiredVersion:
+   *                   type: integer
+   *                 managedReady:
+   *                   type: boolean
+   *                 managedPath:
+   *                   type: string
+   *                   nullable: true
+   *                 serverJar:
+   *                   type: string
+   *                   nullable: true
+   *                 jarFiles:
+   *                   type: array
+   *                   items:
+   *                     type: string
+   *                 startScript:
+   *                   type: string
+   *                   nullable: true
+   *                 scriptFiles:
+   *                   type: array
+   *                   items:
+   *                     type: string
+   *       404:
+   *         description: Servidor no encontrado
+   */
   // GET /api/servers/:name/config
   router.get('/servers/:name/config', (req, res) => {
     const name = decodeURIComponent(req.params.name);
@@ -464,6 +977,53 @@ export function createServerRoutes(io) {
     res.json({ javaPath, requiredVersion, managedReady, managedPath, serverJar, jarFiles, startScript, scriptFiles });
   });
 
+  /**
+   * @swagger
+   * /api/servers/{name}/config:
+   *   post:
+   *     summary: Actualizar la configuración de arranque de un servidor
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: name
+   *         required: true
+   *         schema:
+   *           type: string
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             properties:
+   *               javaPath:
+   *                 type: string
+   *                 nullable: true
+   *                 description: Ruta al ejecutable de Java personalizado
+   *               serverJar:
+   *                 type: string
+   *                 nullable: true
+   *                 description: Nombre del archivo JAR del servidor
+   *               startScript:
+   *                 type: string
+   *                 nullable: true
+   *                 description: Nombre del script de inicio personalizado
+   *     responses:
+   *       200:
+   *         description: Configuración actualizada y scripts regenerados
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 ok:
+   *                   type: boolean
+   *                 scriptsRegenerated:
+   *                   type: boolean
+   *       404:
+   *         description: Servidor no encontrado
+   */
   // POST /api/servers/:name/config
   router.post('/servers/:name/config', async (req, res) => {
     const name = decodeURIComponent(req.params.name);
@@ -494,6 +1054,37 @@ export function createServerRoutes(io) {
 
   // ── server.properties ─────────────────────────────────────────────────────
 
+  /**
+   * @swagger
+   * /api/servers/{name}/properties:
+   *   get:
+   *     summary: Leer las propiedades editables de server.properties
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: name
+   *         required: true
+   *         schema:
+   *           type: string
+   *     responses:
+   *       200:
+   *         description: Propiedades del servidor
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 exists:
+   *                   type: boolean
+   *                 properties:
+   *                   type: object
+   *                   description: Subset gestionado (motd, max-players, difficulty, etc.)
+   *                   additionalProperties:
+   *                     type: string
+   *       404:
+   *         description: Servidor no encontrado
+   */
   // GET /api/servers/:name/properties
   router.get('/servers/:name/properties', (req, res) => {
     const name = decodeURIComponent(req.params.name);
@@ -513,6 +1104,49 @@ export function createServerRoutes(io) {
     res.json({ exists: true, properties });
   });
 
+  /**
+   * @swagger
+   * /api/servers/{name}/properties:
+   *   post:
+   *     summary: Actualizar propiedades en server.properties
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: name
+   *         required: true
+   *         schema:
+   *           type: string
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required: [properties]
+   *             properties:
+   *               properties:
+   *                 type: object
+   *                 description: Propiedades a actualizar (solo las del subset gestionado)
+   *                 example:
+   *                   motd: Mi servidor
+   *                   max-players: "20"
+   *                   difficulty: normal
+   *     responses:
+   *       200:
+   *         description: Propiedades actualizadas
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 ok:
+   *                   type: boolean
+   *       400:
+   *         description: Formato de datos inválido
+   *       404:
+   *         description: Servidor o server.properties no encontrado
+   */
   // POST /api/servers/:name/properties
   router.post('/servers/:name/properties', async (req, res) => {
     const name = decodeURIComponent(req.params.name);
@@ -998,6 +1632,39 @@ export function createServerRoutes(io) {
     }
   }
 
+  /**
+   * @swagger
+   * /api/servers/versions:
+   *   get:
+   *     summary: Obtener las versiones de Minecraft disponibles para un modloader
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: query
+   *         name: modLoader
+   *         required: true
+   *         schema:
+   *           type: string
+   *           enum: [vanilla, forge, fabric, quilt, neoforge]
+   *         description: Tipo de modloader
+   *     responses:
+   *       200:
+   *         description: Lista de versiones de Minecraft disponibles
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 versions:
+   *                   type: array
+   *                   items:
+   *                     type: string
+   *                   example: ["1.21.4", "1.21.1", "1.20.4"]
+   *       400:
+   *         description: Falta el parámetro modLoader
+   *       500:
+   *         description: Error al obtener versiones
+   */
   // GET /api/servers/versions
   router.get('/servers/versions', async (req, res) => {
     const { modLoader } = req.query;
@@ -1015,6 +1682,43 @@ export function createServerRoutes(io) {
     }
   });
 
+  /**
+   * @swagger
+   * /api/servers/loaderVersions:
+   *   get:
+   *     summary: Obtener las versiones disponibles de un modloader para una versión de Minecraft
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: query
+   *         name: modLoader
+   *         required: true
+   *         schema:
+   *           type: string
+   *           enum: [forge, fabric, quilt, neoforge]
+   *       - in: query
+   *         name: mcVersion
+   *         required: true
+   *         schema:
+   *           type: string
+   *         description: Versión de Minecraft (ej. 1.21.4)
+   *     responses:
+   *       200:
+   *         description: Lista de versiones del modloader
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 versions:
+   *                   type: array
+   *                   items:
+   *                     type: string
+   *       400:
+   *         description: Faltan parámetros requeridos
+   *       500:
+   *         description: Error al obtener versiones del modloader
+   */
   // GET /api/servers/loaderVersions
   router.get('/servers/loaderVersions', async (req, res) => {
     const { modLoader, mcVersion } = req.query;
@@ -1032,6 +1736,56 @@ export function createServerRoutes(io) {
     }
   });
 
+  /**
+   * @swagger
+   * /api/servers/create:
+   *   post:
+   *     summary: Crear un servidor desde cero descargando el JAR correspondiente
+   *     security:
+   *       - bearerAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required: [name, version, modLoader, ram]
+   *             properties:
+   *               name:
+   *                 type: string
+   *                 description: Nombre del servidor
+   *               version:
+   *                 type: string
+   *                 description: Versión de Minecraft (ej. 1.21.4)
+   *               modLoader:
+   *                 type: string
+   *                 enum: [vanilla, forge, fabric, quilt, neoforge]
+   *               loaderVersion:
+   *                 type: string
+   *                 description: Requerido si modLoader no es vanilla
+   *               ram:
+   *                 type: integer
+   *                 description: RAM en MB (mínimo 256)
+   *               jvmArgs:
+   *                 type: string
+   *                 description: Argumentos JVM adicionales opcionales
+   *     responses:
+   *       200:
+   *         description: Servidor creado correctamente
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 ok:
+   *                   type: boolean
+   *       400:
+   *         description: Parámetros inválidos o faltantes
+   *       409:
+   *         description: Ya existe un servidor con ese nombre
+   *       500:
+   *         description: Error al descargar o configurar el servidor
+   */
   // POST /api/servers/create
   router.post('/servers/create', async (req, res) => {
     const { name, version, modLoader, loaderVersion, ram, jvmArgs } = req.body;

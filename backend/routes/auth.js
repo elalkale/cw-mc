@@ -36,24 +36,29 @@ async function getPasswordHash() {
 
 /**
  * @swagger
- * /api/login:
+ * /login:
  *   post:
  *     summary: Iniciar sesión y obtener un token JWT
+ *     description: Endpoint público. Limitado a 10 intentos por IP cada 15 minutos.
+ *     security: []
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
  *             type: object
+ *             required: [username, password]
  *             properties:
  *               username:
  *                 type: string
+ *                 example: admin
  *               password:
  *                 type: string
- *
+ *                 format: password
+ *                 example: tu_contraseña
  *     responses:
  *       200:
- *         description: Inicio de sesión exitoso
+ *         description: Inicio de sesión exitoso — guarda el token para enviarlo en el header Authorization
  *         content:
  *           application/json:
  *             schema:
@@ -61,13 +66,15 @@ async function getPasswordHash() {
  *               properties:
  *                 ok:
  *                   type: boolean
+ *                   example: true
  *                 token:
  *                   type: string
+ *                   description: JWT válido por 24 horas
  *                 loggedIn:
  *                   type: boolean
- *
+ *                   example: true
  *       400:
- *         description: Error de autenticación
+ *         description: Usuario o contraseña incorrectos, o campos vacíos
  *         content:
  *           application/json:
  *             schema:
@@ -75,11 +82,12 @@ async function getPasswordHash() {
  *               properties:
  *                 error:
  *                   type: string
+ *                   example: Usuario o contraseña incorrectos
  *                 loggedIn:
  *                   type: boolean
- *
+ *                   example: false
  *       429:
- *         description: Demasiados intentos de inicio de sesión
+ *         description: Demasiados intentos — bloqueado por rate limiting
  *         content:
  *           application/json:
  *             schema:
@@ -87,14 +95,7 @@ async function getPasswordHash() {
  *               properties:
  *                 error:
  *                   type: string
- *                 loggedIn:
- *                   type: boolean
- *             examples:
- *               tooManyAttempts:
- *                 summary: Demasiados intentos
- *                 value:
- *                   error: Demasiados intentos de inicio de sesión. Inténtalo de nuevo en 15 minutos.
- *                   loggedIn: false
+ *                   example: Demasiados intentos de inicio de sesión. Inténtalo de nuevo en 15 minutos.
  */
 router.post('/login', loginLimiter, async (req, res) => {
   const { username, password } = req.body;
@@ -116,12 +117,14 @@ router.post('/login', loginLimiter, async (req, res) => {
 
 /**
  * @swagger
- * /api/logout:
+ * /logout:
  *   post:
- *     summary: Cerrar sesión (en el cliente, simplemente eliminar el token)
+ *     summary: Cerrar sesión
+ *     description: Endpoint público. El token JWT es stateless, el cliente debe descartarlo al recibir la respuesta.
+ *     security: []
  *     responses:
  *       200:
- *         description: Cierre de sesión exitoso
+ *         description: Cierre de sesión confirmado
  *         content:
  *           application/json:
  *             schema:
@@ -130,9 +133,38 @@ router.post('/login', loginLimiter, async (req, res) => {
  *                 ok:
  *                   type: boolean
  *                   example: true
- *
- *       400:
- *         description: Error al cerrar sesión
+ */
+router.post('/logout', (_req, res) => res.json({ ok: true }));
+
+/**
+ * @swagger
+ * /me:
+ *   get:
+ *     summary: Verificar sesión activa y obtener datos del usuario autenticado
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Token válido — devuelve los datos del usuario
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 loggedIn:
+ *                   type: boolean
+ *                   example: true
+ *                 user:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                       example: 1
+ *                     username:
+ *                       type: string
+ *                       example: admin
+ *       401:
+ *         description: Token ausente, inválido o expirado
  *         content:
  *           application/json:
  *             schema:
@@ -140,11 +172,8 @@ router.post('/login', loginLimiter, async (req, res) => {
  *               properties:
  *                 error:
  *                   type: string
- *                   example: No se pudo cerrar sesión
+ *                   example: Token inválido
  */
-router.post('/logout', (_req, res) => res.json({ ok: true }));
-
-// GET /api/me
 router.get('/me', verifyToken, (req, res) => {
   res.json({ loggedIn: true, user: req.user });
 });

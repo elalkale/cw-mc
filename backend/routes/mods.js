@@ -16,6 +16,62 @@ import { CF_API_TOKEN } from '../config/env.js';
 const router = express.Router();
 const upload = multer({ dest: os.tmpdir() });
 
+/**
+ * @swagger
+ * /api/servers/{name}/mods:
+ *   get:
+ *     summary: Listar todos los mods instalados en un servidor
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: name
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Nombre del servidor
+ *     responses:
+ *       200:
+ *         description: Lista de mods con metadatos
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 mods:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       name:
+ *                         type: string
+ *                       filename:
+ *                         type: string
+ *                       enabled:
+ *                         type: boolean
+ *                       size:
+ *                         type: integer
+ *                       logo:
+ *                         type: string
+ *                         nullable: true
+ *                       recognized:
+ *                         type: boolean
+ *                         nullable: true
+ *                       modId:
+ *                         type: integer
+ *                         nullable: true
+ *                       summary:
+ *                         type: string
+ *                         nullable: true
+ *                       gameVersions:
+ *                         type: array
+ *                         items:
+ *                           type: string
+ *                 needsIdentification:
+ *                   type: boolean
+ *       404:
+ *         description: Servidor no encontrado
+ */
 // GET /api/servers/:name/mods
 router.get('/:name/mods', async (req, res) => {
   const name = decodeURIComponent(req.params.name);
@@ -62,6 +118,47 @@ router.get('/:name/mods', async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/servers/{name}/mods/identify:
+ *   post:
+ *     summary: Identificar los mods instalados usando fingerprinting contra CurseForge
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: name
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Nombre del servidor
+ *     responses:
+ *       200:
+ *         description: Resultado de identificación guardado en mods.json
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 identified_at:
+ *                   type: string
+ *                   format: date-time
+ *                 mods:
+ *                   type: object
+ *                   additionalProperties:
+ *                     type: object
+ *                     properties:
+ *                       recognized:
+ *                         type: boolean
+ *                       modId:
+ *                         type: integer
+ *                       cfName:
+ *                         type: string
+ *       404:
+ *         description: Servidor no encontrado
+ *       500:
+ *         description: Error al identificar mods
+ */
 // POST /api/servers/:name/mods/identify
 router.post('/:name/mods/identify', async (req, res) => {
   const serverName = decodeURIComponent(req.params.name);
@@ -143,6 +240,48 @@ router.post('/:name/mods/identify', async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/servers/{name}/mods/toggle:
+ *   post:
+ *     summary: Activar o desactivar un mod (renombra .jar ↔ .jar.disabled)
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: name
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Nombre del servidor
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [filename]
+ *             properties:
+ *               filename:
+ *                 type: string
+ *                 description: Nombre del archivo del mod (con o sin .disabled)
+ *     responses:
+ *       200:
+ *         description: Estado del mod alternado
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok:
+ *                   type: boolean
+ *                 newFilename:
+ *                   type: string
+ *       400:
+ *         description: Falta el nombre del archivo o formato inválido
+ *       404:
+ *         description: Servidor o archivo no encontrado
+ */
 // POST /api/servers/:name/mods/toggle
 router.post('/:name/mods/toggle', async (req, res) => {
   const serverName = decodeURIComponent(req.params.name);
@@ -171,6 +310,41 @@ router.post('/:name/mods/toggle', async (req, res) => {
   res.json({ ok: true, newFilename });
 });
 
+/**
+ * @swagger
+ * /api/servers/{name}/mods/{filename}:
+ *   delete:
+ *     summary: Eliminar un mod del servidor
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: name
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Nombre del servidor
+ *       - in: path
+ *         name: filename
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Nombre del archivo del mod (URL-encoded)
+ *     responses:
+ *       200:
+ *         description: Mod eliminado
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok:
+ *                   type: boolean
+ *       400:
+ *         description: Ruta inválida
+ *       404:
+ *         description: Servidor o archivo no encontrado
+ */
 // DELETE /api/servers/:name/mods/:filename
 router.delete('/:name/mods/:filename', async (req, res) => {
   const serverName = decodeURIComponent(req.params.name);
@@ -198,6 +372,73 @@ router.delete('/:name/mods/:filename', async (req, res) => {
   res.json({ ok: true });
 });
 
+/**
+ * @swagger
+ * /api/servers/{name}/mods/install:
+ *   post:
+ *     summary: Instalar un mod desde CurseForge (incluyendo dependencias automáticamente)
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: name
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Nombre del servidor
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [modId, fileId]
+ *             properties:
+ *               modId:
+ *                 type: integer
+ *                 description: ID del mod en CurseForge
+ *               fileId:
+ *                 type: integer
+ *                 description: ID del archivo específico a instalar
+ *     responses:
+ *       200:
+ *         description: Mod instalado correctamente
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok:
+ *                   type: boolean
+ *                 filename:
+ *                   type: string
+ *                 deps:
+ *                   type: array
+ *                   description: Dependencias instaladas automáticamente
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       modId:
+ *                         type: integer
+ *                       name:
+ *                         type: string
+ *                 failedDeps:
+ *                   type: array
+ *                   description: Dependencias que no se pudieron instalar
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       modId:
+ *                         type: integer
+ *                       error:
+ *                         type: string
+ *       400:
+ *         description: Faltan parámetros modId o fileId
+ *       404:
+ *         description: Servidor no encontrado
+ *       500:
+ *         description: Error al descargar el mod
+ */
 // POST /api/servers/:name/mods/install
 router.post('/:name/mods/install', async (req, res) => {
   const serverName = decodeURIComponent(req.params.name);
@@ -305,6 +546,62 @@ router.post('/:name/mods/install', async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/servers/{name}/mods/upload:
+ *   post:
+ *     summary: Subir archivos JAR de mods manualmente (hasta 20 a la vez)
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: name
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Nombre del servidor
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required: [mods]
+ *             properties:
+ *               mods:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                   format: binary
+ *                 description: Archivos .jar de mods (máximo 20)
+ *     responses:
+ *       200:
+ *         description: Resultado de la subida
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok:
+ *                   type: boolean
+ *                 uploaded:
+ *                   type: array
+ *                   items:
+ *                     type: string
+ *                 errors:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       name:
+ *                         type: string
+ *                       error:
+ *                         type: string
+ *       400:
+ *         description: No se recibió ningún archivo
+ *       404:
+ *         description: Servidor no encontrado
+ */
 // POST /api/servers/:name/mods/upload
 router.post('/:name/mods/upload', upload.array('mods', 20), async (req, res) => {
   const serverName = decodeURIComponent(req.params.name);
