@@ -3,7 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-d
 
 import { fetchWithToken } from "./lib/api";
 import { POLL_INTERVAL_MS, INSTALL_POLL_MS, API } from "./constants";
-import { ServersMap, InstallState } from "./types";
+import { ServersMap, InstallState, CreationState } from "./types";
 import { useFocusTrap } from "./hooks/useFocusTrap";
 
 import { LogOut, X } from "lucide-react";
@@ -18,6 +18,7 @@ import About            from "./pages/About";
 import ErrorBoundary    from "./components/common/ErrorBoundary";
 
 type InstallationsMap = Record<string, InstallState>;
+type CreationsMap = Record<string, CreationState>;
 
 export default function App() {
   const [loggedIn, setLoggedIn]       = useState(false);
@@ -25,6 +26,12 @@ export default function App() {
   const [installations, setInstallations] = useState<InstallationsMap>(() => {
     try {
       const saved = localStorage.getItem('cw-installations');
+      return saved ? JSON.parse(saved) : {};
+    } catch { return {}; }
+  });
+  const [creations, setCreations] = useState<CreationsMap>(() => {
+    try {
+      const saved = localStorage.getItem('cw-creations');
       return saved ? JSON.parse(saved) : {};
     } catch { return {}; }
   });
@@ -51,6 +58,18 @@ export default function App() {
       localStorage.setItem('cw-installations', JSON.stringify(pending));
     }
   }, [installations]);
+
+  // Persiste solo las creaciones en curso
+  useEffect(() => {
+    const pending = Object.fromEntries(
+      Object.entries(creations).filter(([, v]) => v.status === 'creating')
+    );
+    if (Object.keys(pending).length === 0) {
+      localStorage.removeItem('cw-creations');
+    } else {
+      localStorage.setItem('cw-creations', JSON.stringify(pending));
+    }
+  }, [creations]);
 
   const toggleDarkMode = () => setDarkMode(prev => !prev);
 
@@ -131,6 +150,41 @@ export default function App() {
     return () => clearInterval(interval);
   }, [loggedIn]);
 
+  // Polling global de creaciones de servidor
+  const creationsRef = useRef(creations);
+  useEffect(() => { creationsRef.current = creations; }, [creations]);
+
+  useEffect(() => {
+    if (!loggedIn) return;
+    const interval = setInterval(async () => {
+      const pending = Object.entries(creationsRef.current)
+        .filter(([, v]) => v.status === 'creating');
+      for (const [creationId] of pending) {
+        try {
+          const res = await fetchWithToken(API.CREATE_SERVER_STATUS(creationId));
+          if (!res.ok) {
+            const msg = res.status === 404
+              ? 'Creación perdida (servidor reiniciado)'
+              : `Error inesperado (${res.status})`;
+            setCreations(prev => ({
+              ...prev,
+              [creationId]: { ...prev[creationId], status: 'error', error: msg },
+            }));
+            continue;
+          }
+          const data = await res.json();
+          if (data.status === 'done' || data.status === 'error') {
+            setCreations(prev => ({
+              ...prev,
+              [creationId]: { ...prev[creationId], status: data.status, error: data.error },
+            }));
+          }
+        } catch { /* error de red, reintenta en el siguiente ciclo */ }
+      }
+    }, INSTALL_POLL_MS);
+    return () => clearInterval(interval);
+  }, [loggedIn]);
+
   const startServer = async (name: string) => {
     await fetchWithToken(API.START, { method: "POST", body: JSON.stringify({ name }) });
     setTimeout(fetchStatus, 1000);
@@ -162,6 +216,18 @@ export default function App() {
     setInstallations(prev => {
       const next = { ...prev };
       delete next[installId];
+      return next;
+    });
+  }, []);
+
+  const addCreation = useCallback((creationId: string, info: Partial<CreationState>) => {
+    setCreations(prev => ({ ...prev, [creationId]: { status: 'creating', ...info } as CreationState }));
+  }, []);
+
+  const clearCreation = useCallback((creationId: string) => {
+    setCreations(prev => {
+      const next = { ...prev };
+      delete next[creationId];
       return next;
     });
   }, []);
@@ -236,6 +302,9 @@ export default function App() {
                       stopServer={stopServer}
                       darkMode={darkMode}
                       installations={installations}
+                      creations={creations}
+                      onCreationStart={addCreation}
+                      onCreationClear={clearCreation}
                     />
                   }
                 />

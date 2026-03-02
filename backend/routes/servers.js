@@ -79,6 +79,9 @@ const MANAGED_PROPS = ['motd', 'max-players', 'difficulty', 'gamemode', 'white-l
 
 const upload = multer({ dest: os.tmpdir() });
 
+// Estado de creaciones en curso (similar a installs)
+const creations = {};
+
 /**
  * Factory function: recibe io y devuelve el router configurado.
  * @param {import('socket.io').Server} io
@@ -1740,7 +1743,12 @@ export function createServerRoutes(io) {
    * @swagger
    * /api/servers/create:
    *   post:
-   *     summary: Crear un servidor desde cero descargando el JAR correspondiente
+   *     summary: Iniciar la creación de un servidor en background y devolver un ID de seguimiento
+   *     description: >
+   *       Valida los parámetros y comprueba que el nombre no exista, luego responde
+   *       inmediatamente con un `creationId`. La descarga del JAR y la configuración
+   *       del servidor se ejecutan en segundo plano. Usa GET /api/servers/creation/{creationId}
+   *       para hacer polling del estado.
    *     security:
    *       - bearerAuth: []
    *     requestBody:
@@ -1753,7 +1761,7 @@ export function createServerRoutes(io) {
    *             properties:
    *               name:
    *                 type: string
-   *                 description: Nombre del servidor
+   *                 description: Nombre del servidor (sin espacios ni caracteres especiales)
    *               version:
    *                 type: string
    *                 description: Versión de Minecraft (ej. 1.21.4)
@@ -1765,13 +1773,14 @@ export function createServerRoutes(io) {
    *                 description: Requerido si modLoader no es vanilla
    *               ram:
    *                 type: integer
+   *                 minimum: 256
    *                 description: RAM en MB (mínimo 256)
    *               jvmArgs:
    *                 type: string
    *                 description: Argumentos JVM adicionales opcionales
    *     responses:
    *       200:
-   *         description: Servidor creado correctamente
+   *         description: Creación iniciada en background — usa creationId para hacer polling
    *         content:
    *           application/json:
    *             schema:
@@ -1779,12 +1788,18 @@ export function createServerRoutes(io) {
    *               properties:
    *                 ok:
    *                   type: boolean
+   *                   example: true
+   *                 creationId:
+   *                   type: string
+   *                   format: uuid
+   *                   description: ID para consultar el estado con GET /api/servers/creation/{creationId}
+   *                 serverName:
+   *                   type: string
+   *                   description: Nombre normalizado del servidor
    *       400:
    *         description: Parámetros inválidos o faltantes
    *       409:
    *         description: Ya existe un servidor con ese nombre
-   *       500:
-   *         description: Error al descargar o configurar el servidor
    */
   // POST /api/servers/create
   router.post('/servers/create', async (req, res) => {
@@ -1805,111 +1820,168 @@ export function createServerRoutes(io) {
       return res.status(409).json({ error: `Ya existe un servidor con el nombre "${serverName}"` });
     }
 
-    try {
-      // Crear directorio
-      await fs.promises.mkdir(serverDir, { recursive: true });
+    // Registrar creación y responder inmediatamente
+    const creationId = crypto.randomUUID();
+    creations[creationId] = { status: 'creating', serverName, error: null };
+    res.json({ ok: true, creationId, serverName });
 
-      // Crear eula.txt
-      await fs.promises.writeFile(
-        path.join(serverDir, 'eula.txt'),
-        '#By changing the setting below to true you are indicating your agreement to our EULA (https://account.mojang.com/documents/minecraft_eula).\r\n' +
-        '#Server startup will fail if eula.txt does not exist or if this setting remains false.\r\n' +
-        `#${new Date().toISOString()}\r\n` +
-        'eula=true\r\n',
-        'utf-8'
-      );
-
-      // Crear cw-mc-config.json
-      const cwConfig = {
-        version,
-        modLoader,
-        loaderVersion: modLoader === 'vanilla' ? undefined : loaderVersion,
-        ram,
-        jvmArgs: jvmArgs || '',
-        serverJar: modLoader === 'forge' || modLoader === 'neoforge' ? undefined : 'server.jar',
-        startScript: modLoader === 'forge' || modLoader === 'neoforge' ? (isWindows ? 'run.bat' : 'run.sh') : undefined,
-
-      };
-      await fs.promises.writeFile(
-        path.join(serverDir, 'cw-mc-config.json'),
-        JSON.stringify(cwConfig, null, 2),
-        'utf-8'
-      );
-
-      // Descargar server.jar
-      const jarPath = path.join(serverDir, 'server.jar');
+    // Ejecutar creación en segundo plano
+    (async () => {
       try {
-        await downloadServerJar(version, modLoader, jarPath, loaderVersion, serverDir);
-      } catch (jarErr) {
-        // Si no se puede descargar, crear un archivo stub
-        console.warn(`Error descargando server.jar: ${jarErr.message}`);
-        const stubMsg = `ADVERTENCIA: No se pudo descargar automaticamente la JAR para ${modLoader} ${version}.\n\nInstrucciones:\n${jarErr.message}\n\nDescarga y coloca el archivo como 'server.jar' en este directorio.`;
-        await fs.promises.writeFile(jarPath, '', 'utf-8');
+        // Crear directorio
+        await fs.promises.mkdir(serverDir, { recursive: true });
+
+        // Crear eula.txt
         await fs.promises.writeFile(
-          path.join(serverDir, 'JAR_DOWNLOAD_ERROR.txt'),
-          stubMsg,
+          path.join(serverDir, 'eula.txt'),
+          '#By changing the setting below to true you are indicating your agreement to our EULA (https://account.mojang.com/documents/minecraft_eula).\r\n' +
+          '#Server startup will fail if eula.txt does not exist or if this setting remains false.\r\n' +
+          `#${new Date().toISOString()}\r\n` +
+          'eula=true\r\n',
           'utf-8'
         );
+
+        // Crear cw-mc-config.json
+        const cwConfig = {
+          version,
+          modLoader,
+          loaderVersion: modLoader === 'vanilla' ? undefined : loaderVersion,
+          ram,
+          jvmArgs: jvmArgs || '',
+          serverJar: modLoader === 'forge' || modLoader === 'neoforge' ? undefined : 'server.jar',
+          startScript: modLoader === 'forge' || modLoader === 'neoforge' ? (isWindows ? 'run.bat' : 'run.sh') : undefined,
+        };
+        await fs.promises.writeFile(
+          path.join(serverDir, 'cw-mc-config.json'),
+          JSON.stringify(cwConfig, null, 2),
+          'utf-8'
+        );
+
+        // Descargar server.jar
+        const jarPath = path.join(serverDir, 'server.jar');
+        try {
+          await downloadServerJar(version, modLoader, jarPath, loaderVersion, serverDir);
+        } catch (jarErr) {
+          // Si no se puede descargar, crear un archivo stub
+          console.warn(`Error descargando server.jar: ${jarErr.message}`);
+          const stubMsg = `ADVERTENCIA: No se pudo descargar automaticamente la JAR para ${modLoader} ${version}.\n\nInstrucciones:\n${jarErr.message}\n\nDescarga y coloca el archivo como 'server.jar' en este directorio.`;
+          await fs.promises.writeFile(jarPath, '', 'utf-8');
+          await fs.promises.writeFile(
+            path.join(serverDir, 'JAR_DOWNLOAD_ERROR.txt'),
+            stubMsg,
+            'utf-8'
+          );
+        }
+
+        // Crear scripts de inicio
+        const javaVer = getMcJavaVersion(version);
+        const javaD = isJavaReady(javaVer) ? getJavaDir(javaVer) : null;
+        const javaNote = javaD
+          ? `Java ${javaVer} gestionado: ${javaD}`
+          : `Java ${javaVer} requerido`;
+
+        const xmx = `-Xmx${ram / 1024}G`;
+        const xms = `-Xms${Math.max(256, ram / 4)}M`;
+        const jvmArgsStr = jvmArgs ? ` ${jvmArgs}` : '';
+
+        // ── Windows .bat
+        const batContent = [
+          '@echo off',
+          `REM Generado por CW-MC — ${javaNote}`,
+          `REM ${modLoader.toUpperCase()} ${version}`,
+          '',
+          javaD ? `SET "JAVA_HOME=${javaD}"` : 'REM Java gestionado no disponible, usando java del PATH',
+          javaD ? 'SET "PATH=%JAVA_HOME%\\bin;%PATH%"' : '',
+          '',
+          `java ${xmx} ${xms} ${jvmArgsStr}-jar server.jar nogui`,
+          'pause',
+        ].filter(l => l !== undefined).join('\r\n');
+
+        await fs.promises.writeFile(path.join(serverDir, 'start-server.bat'), batContent, 'utf-8');
+
+        // ── Linux / macOS .sh
+        const shContent = [
+          '#!/usr/bin/env bash',
+          `# Generado por CW-MC — ${javaNote}`,
+          `# ${modLoader.toUpperCase()} ${version}`,
+          '',
+          javaD ? `export JAVA_HOME="${javaD}"` : '# Java gestionado no disponible, usando java del PATH',
+          javaD ? 'export PATH="$JAVA_HOME/bin:$PATH"' : '',
+          '',
+          `java ${xmx} ${xms} ${jvmArgsStr}-jar server.jar nogui`,
+        ].filter(l => l !== undefined).join('\n');
+
+        await fs.promises.writeFile(path.join(serverDir, 'start-server.sh'), shContent, 'utf-8');
+        if (!isWindows) {
+          try { fs.chmodSync(path.join(serverDir, 'start-server.sh'), 0o755); } catch { /* ignorar */ }
+        }
+
+        // Crear directorios estándar
+        for (const dir of ['backups', 'world', 'logs', 'config']) {
+          await fs.promises.mkdir(path.join(serverDir, dir), { recursive: true });
+        }
+
+        // Refrescar lista de servidores
+        refreshServers();
+
+        creations[creationId].status = 'done';
+      } catch (err) {
+        console.error('Error creando servidor:', err);
+        creations[creationId].status = 'error';
+        creations[creationId].error = err.message || 'Error al crear el servidor';
+        // Limpiar directorio si algo falló
+        try { await fs.promises.rm(serverDir, { recursive: true, force: true }); } catch { /* ignorar */ }
       }
+    })();
+  });
 
-      // Crear scripts de inicio
-      const javaVer = getMcJavaVersion(version);
-      const javaD = isJavaReady(javaVer) ? getJavaDir(javaVer) : null;
-      const javaNote = javaD
-        ? `Java ${javaVer} gestionado: ${javaD}`
-        : `Java ${javaVer} requerido`;
+  
 
-      const xmx = `-Xmx${ram / 1024}G`;
-      const xms = `-Xms${Math.max(256, ram / 4)}M`;
-      const jvmArgsStr = jvmArgs ? ` ${jvmArgs}` : '';
-
-      // ── Windows .bat
-      const batContent = [
-        '@echo off',
-        `REM Generado por CW-MC — ${javaNote}`,
-        `REM ${modLoader.toUpperCase()} ${version}`,
-        '',
-        javaD ? `SET "JAVA_HOME=${javaD}"` : 'REM Java gestionado no disponible, usando java del PATH',
-        javaD ? 'SET "PATH=%JAVA_HOME%\\bin;%PATH%"' : '',
-        '',
-        `java ${xmx} ${xms} ${jvmArgsStr}-jar server.jar nogui`,
-        'pause',
-      ].filter(l => l !== undefined).join('\r\n');
-
-      await fs.promises.writeFile(path.join(serverDir, 'start-server.bat'), batContent, 'utf-8');
-
-      // ── Linux / macOS .sh
-      const shContent = [
-        '#!/usr/bin/env bash',
-        `# Generado por CW-MC — ${javaNote}`,
-        `# ${modLoader.toUpperCase()} ${version}`,
-        '',
-        javaD ? `export JAVA_HOME="${javaD}"` : '# Java gestionado no disponible, usando java del PATH',
-        javaD ? 'export PATH="$JAVA_HOME/bin:$PATH"' : '',
-        '',
-        `java ${xmx} ${xms} ${jvmArgsStr}-jar server.jar nogui`,
-      ].filter(l => l !== undefined).join('\n');
-
-      await fs.promises.writeFile(path.join(serverDir, 'start-server.sh'), shContent, 'utf-8');
-      if (!isWindows) {
-        try { fs.chmodSync(path.join(serverDir, 'start-server.sh'), 0o755); } catch { /* ignorar */ }
-      }
-
-      // Crear directorios estándar
-      for (const dir of ['backups', 'world', 'logs', 'config']) {
-        await fs.promises.mkdir(path.join(serverDir, dir), { recursive: true });
-      }
-
-      // Refrescar lista de servidores
-      refreshServers();
-
-      res.json({ ok: true, serverName });
-    } catch (err) {
-      console.error('Error creando servidor:', err);
-      // Limpiar directorio si algo falló
-      try { await fs.promises.rm(serverDir, { recursive: true, force: true }); } catch { /* ignorar */ }
-      res.status(500).json({ error: err.message || 'Error al crear el servidor' });
-    }
+  /**
+   * @swagger
+   * /api/servers/creation/{creationId}:
+   *   get:
+   *     summary: Consultar el estado de una creación de servidor en curso
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: creationId
+   *         required: true
+   *         schema:
+   *           type: string
+   *           format: uuid
+   *         description: ID de creación devuelto por POST /api/servers/create
+   *     responses:
+   *       200:
+   *         description: Estado actual de la creación
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 status:
+   *                   type: string
+   *                   enum: [creating, done, error]
+   *                   description: >
+   *                     creating — en progreso,
+   *                     done — servidor listo,
+   *                     error — falló la creación
+   *                 serverName:
+   *                   type: string
+   *                   description: Nombre del servidor que se está creando
+   *                 error:
+   *                   type: string
+   *                   nullable: true
+   *                   description: Mensaje de error si status es error
+   *       404:
+   *         description: Creación no encontrada (ID inválido o servidor reiniciado)
+   */
+  // GET /api/servers/creation/:creationId — estado de una creación en curso
+  router.get('/servers/creation/:creationId', (req, res) => {
+    const entry = creations[req.params.creationId];
+    if (!entry) return res.status(404).json({ error: 'Creación no encontrada' });
+    res.json(entry);
   });
 
   return router;

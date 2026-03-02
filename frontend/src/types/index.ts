@@ -93,6 +93,19 @@ export interface InstallState {
   error?: string | null;
 }
 
+// ── Creaciones ────────────────────────────────────────────────────────────────
+
+export type CreationStatus = 'creating' | 'done' | 'error';
+
+export interface CreationState {
+  creationId: string;
+  status: CreationStatus;
+  serverName: string;
+  modLoader?: string;
+  version?: string;
+  error?: string | null;
+}
+
 // ── Java ──────────────────────────────────────────────────────────────────────
 
 export interface JavaVersionStatus {

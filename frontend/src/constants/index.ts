@@ -72,6 +72,7 @@ export const API = {
   // Install
   INSTALL:       '/api/install',
   INSTALL_STATUS:(id: string) => `/api/install/${id}`,
+  CREATE_SERVER_STATUS: (id: string) => `/api/servers/creation/${id}`,
 
   // CurseForge
   CF_MODS:       '/api/curseforge/mods',

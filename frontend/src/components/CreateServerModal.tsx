@@ -142,6 +142,8 @@ export default function CreateServerModal({ isOpen, onClose, darkMode, onServerC
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Error al crear el servidor');
 
+      const { creationId, serverName: createdName } = data;
+
       setServerName('');
       setMcVersion('');
       setModLoader('fabric');
@@ -150,9 +152,9 @@ export default function CreateServerModal({ isOpen, onClose, darkMode, onServerC
       setCustomRam('');
       setUseCustomRam(false);
       setJvmArgs('');
-      
+
       onClose();
-      if (onServerCreated) onServerCreated();
+      if (onServerCreated) onServerCreated(creationId, createdName, { version: mcVersion, modLoader });
     } catch (err) {
       setError(err.message);
     } finally {

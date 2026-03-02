@@ -4,6 +4,51 @@ import ServerCard from "../components/ServerCard";
 import CreateServerModal from "../components/CreateServerModal";
 import { API_BASE, fetchWithToken } from "../lib/api";
 
+function CreatingCard({ info, onClear, darkMode }) {
+  const done  = info.status === 'done';
+  const error = info.status === 'error';
+  return (
+    <div className={`rounded-2xl border overflow-hidden flex flex-col shadow-lg ${darkMode
+      ? 'bg-gradient-to-br from-gray-800/90 via-purple-950/10 to-gray-900 border-purple-500/30'
+      : 'bg-gradient-to-br from-white to-purple-50/70 border-purple-300/60'
+    }`}>
+      <div className="h-[72px] bg-gray-900/50 flex items-center justify-center relative overflow-hidden flex-shrink-0">
+        <div className={`w-full h-full ${darkMode ? "bg-gradient-to-br from-purple-900/70 via-indigo-900/40 to-pink-900/60" : "bg-gradient-to-br from-purple-200/80 via-indigo-100 to-pink-200/80"}`} />
+        <div className="absolute inset-0 bg-gradient-to-t from-gray-900/60 to-transparent" />
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+          {!done && !error && <span className="w-6 h-6 rounded-full border-[3px] border-t-transparent border-purple-400 animate-spin" />}
+          <span className={`text-xs font-semibold px-2.5 py-1 rounded-full backdrop-blur-sm border ${
+            done  ? 'bg-green-500/20 border-green-400/40 text-green-300'
+            : error ? 'bg-red-500/20 border-red-400/40 text-red-300'
+            : 'bg-purple-500/20 border-purple-400/40 text-purple-300'
+          }`}>
+            {done ? '✓ Creado' : error ? 'Error' : 'Creando...'}
+          </span>
+        </div>
+      </div>
+      <div className="px-4 pb-4 pt-3 flex flex-col gap-1">
+        <p className={`font-bold text-sm leading-tight line-clamp-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+          {info.serverName}
+        </p>
+        {(info.modLoader || info.version) && (
+          <p className={`text-xs line-clamp-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+            {info.modLoader ? info.modLoader.charAt(0).toUpperCase() + info.modLoader.slice(1) : ''}{info.version ? ` ${info.version}` : ''}
+          </p>
+        )}
+        {error && info.error && <p className="text-xs text-red-400 mt-1 line-clamp-2">{info.error}</p>}
+        {(done || error) && onClear && (
+          <button
+            onClick={() => onClear(info.creationId)}
+            className={`text-xs mt-1 font-medium text-left ${darkMode ? 'text-purple-400 hover:text-purple-300' : 'text-purple-600 hover:text-purple-700'}`}
+          >
+            Descartar
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function InstallingCard({ info, darkMode }) {
   const done  = info.status === 'done';
   const error = info.status === 'error';
@@ -41,7 +86,7 @@ function InstallingCard({ info, darkMode }) {
   );
 }
 
-export default function Dashboard({ servers, startServer, stopServer, darkMode, installations = {} }: { servers: any; startServer: any; stopServer: any; darkMode: any; installations?: Record<string, any> }) {
+export default function Dashboard({ servers, startServer, stopServer, darkMode, installations = {}, creations = {}, onCreationStart, onCreationClear }: { servers: any; startServer: any; stopServer: any; darkMode: any; installations?: Record<string, any>; creations?: Record<string, any>; onCreationStart?: (id: string, info: any) => void; onCreationClear?: (id: string) => void }) {
   const [viewMode, setViewMode] = useState("grid");
 
   const [showUploadModal, setShowUploadModal] = useState(false);
@@ -58,9 +103,9 @@ export default function Dashboard({ servers, startServer, stopServer, darkMode, 
 
   const openCreateModal = () => { setShowCreateModal(true); };
   const closeCreateModal = () => { setShowCreateModal(false); };
-  const onServerCreated = () => {
+  const onServerCreated = (creationId: string, serverName: string, meta: { version: string; modLoader: string }) => {
     closeCreateModal();
-    // El Dashboard se actualizará mediante polling o refresh desde el Layout
+    if (onCreationStart) onCreationStart(creationId, { serverName, ...meta });
   };
 
   const handleUpload = async () => {
@@ -84,11 +129,13 @@ export default function Dashboard({ servers, startServer, stopServer, darkMode, 
 
   const activeInstalls  = Object.entries(installations).filter(([, i]) => i.status === 'installing' || i.status === 'error');
   const installingNames = new Set(activeInstalls.map(([, i]) => i.serverName));
-  const serverEntries   = (Object.entries(servers) as [string, any][]).filter(([name]) => !installingNames.has(name));
+  const activeCreations = Object.entries(creations).filter(([, c]) => c.status === 'creating' || c.status === 'error' || c.status === 'done');
+  const creatingNames   = new Set(activeCreations.map(([, c]) => c.serverName));
+  const serverEntries   = (Object.entries(servers) as [string, any][]).filter(([name]) => !installingNames.has(name) && !creatingNames.has(name));
 
-  const totalServers  = serverEntries.length + activeInstalls.length;
+  const totalServers  = serverEntries.length + activeInstalls.length + activeCreations.length;
   const runningCount  = serverEntries.filter(([, d]) => (d as any).running).length;
-  const isEmpty       = serverEntries.length === 0 && activeInstalls.length === 0;
+  const isEmpty       = serverEntries.length === 0 && activeInstalls.length === 0 && activeCreations.length === 0;
 
   const bg = darkMode
     ? "bg-[radial-gradient(ellipse_at_top,_#1e1040_0%,_#0f0f1a_60%,_#0a0a14_100%)]"
@@ -223,6 +270,9 @@ export default function Dashboard({ servers, startServer, stopServer, darkMode, 
             }
             aria-label="Lista de servidores"
           >
+            {activeCreations.map(([creationId, info]) => (
+              <CreatingCard key={creationId} info={info} onClear={onCreationClear} darkMode={darkMode} />
+            ))}
             {activeInstalls.map(([installId, info]) => (
               <InstallingCard key={installId} info={info} darkMode={darkMode} />
             ))}
