@@ -129,6 +129,7 @@ export interface ServerJavaConfig {
 export interface ServerProperties {
   motd?:             string;
   'max-players'?:    string;
+  'server-port'?:    string;
   gamemode?:         string;
   difficulty?:       string;
   pvp?:              string;

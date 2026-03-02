@@ -616,6 +616,19 @@ export default function ServerConfig({ server, serverVersion, darkMode }: Props)
                 />
               </div>
 
+              {/* Server port */}
+              <div>
+                <label className={labelCls}>Puerto del servidor</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={65535}
+                  value={props['server-port'] ?? '25565'}
+                  onChange={e => updateProp('server-port', e.target.value)}
+                  className={inputCls}
+                />
+              </div>
+
               {/* View distance */}
               <div>
                 <label className={labelCls}>Distancia de vista (chunks)</label>

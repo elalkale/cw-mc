@@ -60,7 +60,7 @@ export async function generateStartScripts(destDir, mcVersion) {
   try {
     const cfg = JSON.parse(fs.readFileSync(path.join(destDir, 'cw-mc-config.json'), 'utf-8'));
     if (cfg.serverJar) serverJar = cfg.serverJar;
-  } catch {}
+  } catch { }
 
   // ── start-server.bat (Windows) ────────────────────────────────────────────
   const batLines = [
@@ -145,7 +145,7 @@ export async function runInstall(installId, modId, fileId, destDir, meta) {
     const { spawn } = await import('child_process');
     const { isWindows } = await import('../utils/platform.js');
     const batPath = path.join(destDir, 'install.bat');
-    const shPath  = path.join(destDir, 'install.sh');
+    const shPath = path.join(destDir, 'install.sh');
 
     if (isWindows && fs.existsSync(batPath)) {
       await new Promise((resolve, reject) => {
@@ -174,7 +174,18 @@ export async function runInstall(installId, modId, fileId, destDir, meta) {
       );
     }
 
-    // 8. Refrescar lista de servidores
+    //8. Generar eula
+    await fs.promises.writeFile(
+      path.join(destDir, 'eula.txt'),
+      '#By changing the setting below to true you are indicating your agreement to our EULA (https://account.mojang.com/documents/minecraft_eula).\r\n' +
+      '#Server startup will fail if eula.txt does not exist or if this setting remains false.\r\n' +
+      `#${new Date().toISOString()}\r\n` +
+      'eula=true\r\n',
+      'utf-8'
+    );
+
+
+    //9. Refrescar lista de servidores
     refreshServers();
     installs[installId].status = 'done';
   } catch (err) {

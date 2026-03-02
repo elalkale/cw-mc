@@ -75,7 +75,7 @@ async function createFallbackStartScript(serverDir, mcVersion) {
 }
 
 // Propiedades de server.properties que este panel puede leer y editar
-const MANAGED_PROPS = ['motd', 'max-players', 'difficulty', 'gamemode', 'white-list', 'pvp', 'view-distance', 'level-seed', 'online-mode'];
+const MANAGED_PROPS = ['motd', 'max-players', 'server-port', 'difficulty', 'gamemode', 'white-list', 'pvp', 'view-distance', 'level-seed', 'online-mode'];
 
 const upload = multer({ dest: os.tmpdir() });
 
