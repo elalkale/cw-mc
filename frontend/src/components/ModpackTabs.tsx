@@ -3,6 +3,7 @@ import React from 'react';
 export default function ModpackTabs({ tab, onTabChange, cfMod, filesTotalCount, darkMode }) {
   const tabs = [
     { id: 'descripcion', label: 'Descripción' },
+    { id: 'changelog',   label: 'Changelog' },
     { id: 'screenshots', label: `Screenshots${cfMod?.screenshots?.length ? ` (${cfMod.screenshots.length})` : ''}` },
     { id: 'versiones',   label: `Versiones${filesTotalCount ? ` (${filesTotalCount})` : ''}` },
   ];

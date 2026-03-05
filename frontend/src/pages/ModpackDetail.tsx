@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Loader2, Layers } from 'lucide-react';
+import FilterSelect from '../components/FilterSelect';
 import { API_BASE, fetchWithToken } from '../lib/api';
 import modpacksData from '../resources/modpacks_with_server.json';
 
@@ -53,15 +54,25 @@ export default function ModpackDetail({ darkMode, onInstallStart, onInstallClear
   const [filesTotalCount, setFilesTotalCount] = useState(0);
   const [downloadingFile, setDownloadingFile] = useState(null);
 
+  const [changelog,            setChangelog]            = useState<string | null>(null);
+  const [changelogLoading,     setChangelogLoading]     = useState(false);
+  const [changelogFileId,      setChangelogFileId]      = useState<number | null>(null);
+  const [changelogViewFileId,  setChangelogViewFileId]  = useState<number | null>(null);
+
   const [showInstallModal,   setShowInstallModal]   = useState(false);
   const [serverNameInput,    setServerNameInput]    = useState('');
   const [installFileId,      setInstallFileId]      = useState(null);
   const [installFileLabel,   setInstallFileLabel]   = useState('');
   const [installFileVersions, setInstallFileVersions] = useState<string[]>([]);
+  const [activeInstallFileId, setActiveInstallFileId] = useState<number | null>(null);
 
   const currentInstall = Object.entries(installations).find(([, info]) => info.modId === localPack?.modId);
   const installStatus  = currentInstall?.[1]?.status ?? 'idle';
   const installError   = currentInstall?.[1]?.error  ?? '';
+
+  useEffect(() => {
+    if (installStatus === 'done' || installStatus === 'error') setActiveInstallFileId(null);
+  }, [installStatus]);
 
   const currentInstallRef = useRef(null);
   useEffect(() => { currentInstallRef.current = currentInstall; }, [currentInstall]);
@@ -106,12 +117,29 @@ export default function ModpackDetail({ darkMode, onInstallStart, onInstallClear
     fetchWithToken(`${API_BASE}/api/curseforge/mod/${modId}/files?index=${filesPage * 50}&pageSize=50`)
       .then(r => r.json())
       .then(data => {
-        if (data?.data) setFiles(data.data);
+        if (data?.data) {
+          setFiles(data.data);
+          if (data.data.length > 0 && filesPage === 0) {
+            setChangelogViewFileId(prev => prev ?? data.data[0].id);
+          }
+        }
         if (data?.pagination?.totalCount != null) setFilesTotalCount(data.pagination.totalCount);
       })
       .catch(console.error)
       .finally(() => setLoadingFiles(false));
   }, [modId, filesPage]);
+
+  useEffect(() => {
+    if (tab !== 'changelog' || !modId || !changelogViewFileId) return;
+    if (changelogFileId === changelogViewFileId) return;
+    setChangelogLoading(true);
+    setChangelog(null);
+    fetchWithToken(`${API_BASE}/api/curseforge/mod/${modId}/file/${changelogViewFileId}/changelog`)
+      .then(r => r.json())
+      .then(data => { setChangelog(data?.data ?? ''); setChangelogFileId(changelogViewFileId); })
+      .catch(() => setChangelog(''))
+      .finally(() => setChangelogLoading(false));
+  }, [tab, changelogViewFileId, modId]);
 
   // ── Handlers ──────────────────────────────────────────────────────────────
 
@@ -131,6 +159,7 @@ export default function ModpackDetail({ darkMode, onInstallStart, onInstallClear
     const mcVersions = installFileVersions.length > 0
       ? installFileVersions.filter(v => /^\d+\.\d+/.test(v))
       : livePack.gameVersions;
+    setActiveInstallFileId(fileId ?? null);
     setShowInstallModal(false);
     try {
       const res  = await fetchWithToken(`${API_BASE}/api/install`, {
@@ -278,6 +307,7 @@ export default function ModpackDetail({ darkMode, onInstallStart, onInstallClear
           downloadError={downloadError}
           installStatus={installStatus}
           installError={installError}
+          installingFileId={activeInstallFileId}
           files={files}
           onOpenInstallModal={openInstallModal}
         />
@@ -318,6 +348,60 @@ export default function ModpackDetail({ darkMode, onInstallStart, onInstallClear
             )
           )}
 
+          {tab === 'changelog' && (
+            <div>
+              {/* Selector de versión */}
+              {files.length > 0 && (
+                <div className={`flex items-center gap-2 mb-4 pb-3 border-b flex-wrap ${darkMode ? 'border-gray-700/50' : 'border-gray-200'}`}>
+                  <span className={`text-xs shrink-0 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Versión:</span>
+                  <button
+                    onClick={() => {
+                      if (changelogViewFileId !== files[0].id) {
+                        setChangelogViewFileId(files[0].id);
+                        setChangelogFileId(null);
+                        setChangelog(null);
+                      }
+                    }}
+                    className={`text-xs px-2.5 py-1 rounded-lg border font-medium transition-all ${
+                      changelogViewFileId === files[0].id
+                        ? darkMode ? 'bg-purple-500/20 border-purple-500/40 text-purple-300' : 'bg-purple-100 border-purple-300 text-purple-700'
+                        : darkMode ? 'bg-gray-800/60 border-gray-700/60 text-gray-400 hover:border-gray-600 hover:text-gray-300' : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'
+                    }`}
+                  >
+                    Última versión
+                  </button>
+                  {files.length > 1 && (
+                    <FilterSelect
+                      icon={Layers}
+                      value={String(changelogViewFileId ?? '')}
+                      onChange={(v) => { setChangelogViewFileId(v ? Number(v) : null); setChangelogFileId(null); setChangelog(null); }}
+                      placeholder="Selecciona una versión"
+                      options={[
+                        { value: '', label: 'Selecciona una versión' },
+                        ...files.map(f => ({ value: String(f.id), label: f.displayName || f.fileName })),
+                      ]}
+                      darkMode={darkMode}
+                    />
+                  )}
+                </div>
+              )}
+              {changelogLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 size={20} className="text-purple-400 animate-spin" />
+                </div>
+              ) : changelog ? (
+                <div className={`rounded-xl p-4 ${darkMode ? 'bg-gray-800/60 border border-gray-700/40' : 'bg-purple-50 border border-purple-200'}`}>
+                  <div
+                    className={`prose prose-sm max-w-none [&_img]:max-w-full [&_a]:text-purple-400 [&_a]:no-underline [&_a:hover]:underline ${darkMode ? 'prose-invert text-gray-300' : 'text-gray-700'}`}
+                    dangerouslySetInnerHTML={{ __html: changelog }}
+                  />
+                </div>
+              ) : changelog === '' ? (
+                <p className={`text-sm ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Sin changelog disponible para esta versión.</p>
+              ) : null}
+            </div>
+          )}
+
           {tab === 'screenshots' && (
             <ScreenshotsTab
               screenshots={cfMod?.screenshots}
@@ -335,7 +419,7 @@ export default function ModpackDetail({ darkMode, onInstallStart, onInstallClear
               filesTotalCount={filesTotalCount}
               downloadingFile={downloadingFile}
               onDownloadFile={downloadFile}
-              installStatus={installStatus}
+              installingFileId={activeInstallFileId}
               onInstallFile={(fileId, fileLabel, fileVersions) => openInstallModal(fileId, fileLabel, localPack.slug, fileVersions)}
               darkMode={darkMode}
               modId={modId}

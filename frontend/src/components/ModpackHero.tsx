@@ -18,9 +18,11 @@ const LOADER_COLORS_LIGHT = {
 export default function ModpackHero({
   cfMod, livePack, localPack, loadingMod, darkMode, cardClass,
   downloading, onDownloadServerPack, downloadError,
-  installStatus, installError,
+  installStatus, installError, installingFileId,
   files, onOpenInstallModal,
 }) {
+  const isThisInstalling = installingFileId !== null && installingFileId === localPack.serverFileId;
+  const anyInstalling = installingFileId !== null;
   return (
     <div className={`rounded-2xl border overflow-hidden mb-5 ${cardClass}`}>
 
@@ -130,30 +132,30 @@ export default function ModpackHero({
             {localPack.serverFileId && (
               <button
                 onClick={() => {
-                  if (installStatus === 'idle' || installStatus === 'error') {
+                  if (!anyInstalling && installStatus !== 'done') {
                     const serverFile = files.find(f => (f.serverPackFileId ?? f.id) === localPack.serverFileId);
                     const fileLabel = serverFile?.displayName || serverFile?.fileName || 'Versión recomendada';
                     onOpenInstallModal(null, fileLabel, localPack.slug, serverFile?.gameVersions ?? []);
                   }
                 }}
-                disabled={installStatus === 'installing'}
+                disabled={anyInstalling}
                 className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm border transition-all hover:scale-[1.02] active:scale-95 disabled:cursor-not-allowed disabled:hover:scale-100 ${
                   installStatus === 'done'
                     ? 'bg-green-500/10 border-green-500/25 text-green-400'
                     : installStatus === 'error'
                     ? 'bg-red-500/10 border-red-500/25 text-red-400 hover:bg-red-500/20'
-                    : installStatus === 'installing'
+                    : isThisInstalling
                     ? darkMode ? 'bg-gray-800 border-gray-700 text-gray-500' : 'bg-gray-100 border-gray-200 text-gray-400'
                     : darkMode ? 'border-purple-500/30 text-purple-300 hover:bg-purple-500/10 hover:border-purple-400/50' : 'border-purple-400/60 text-purple-700 hover:bg-purple-50 hover:border-purple-500/70'
                 }`}
               >
-                {installStatus === 'installing'
+                {isThisInstalling
                   ? <span className="w-4 h-4 rounded-full border-2 border-t-transparent border-current animate-spin" aria-hidden="true" />
                   : <Server size={15} aria-hidden="true" />
                 }
-                {installStatus === 'installing' ? 'Instalando...'
-                  : installStatus === 'done'    ? '✓ Instalado'
-                  : installStatus === 'error'   ? 'Error — reintentar'
+                {isThisInstalling        ? 'Instalando...'
+                  : installStatus === 'done'  ? '✓ Instalado'
+                  : installStatus === 'error' ? 'Error — reintentar'
                   : 'Instalar servidor'}
               </button>
             )}

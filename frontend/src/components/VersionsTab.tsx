@@ -17,7 +17,7 @@ export default function VersionsTab({
   filesTotalCount: _filesTotalCount,
   downloadingFile,
   onDownloadFile,
-  installStatus,
+  installingFileId,
   onInstallFile,
   darkMode,
   modId,
@@ -222,15 +222,18 @@ export default function VersionsTab({
                       </button>
                       <button
                         onClick={() => onInstallFile(file.serverPackFileId ?? file.id, file.displayName || file.fileName, file.gameVersions ?? [])}
-                        disabled={installStatus === 'installing'}
+                        disabled={installingFileId !== null}
                         className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 ${darkMode
                           ? 'border-purple-500/30 text-purple-300 hover:bg-purple-500/10 hover:border-purple-400/50'
                           : 'border-purple-400/60 text-purple-700 hover:bg-purple-50'
                         }`}
                         aria-label={`Instalar ${file.displayName}`}
                       >
-                        <Server size={11} aria-hidden="true" />
-                        Instalar
+                        {installingFileId === (file.serverPackFileId ?? file.id)
+                          ? <span className="w-3 h-3 rounded-full border-2 border-t-transparent border-current animate-spin" aria-hidden="true" />
+                          : <Server size={11} aria-hidden="true" />
+                        }
+                        {installingFileId === (file.serverPackFileId ?? file.id) ? 'Instalando...' : 'Instalar'}
                       </button>
                     </div>
                   </td>

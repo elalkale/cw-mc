@@ -106,6 +106,8 @@ router.get('/:name/mods', async (req, res) => {
             logo: meta.logo || null,
             recognized: modsMetadata ? (meta.recognized ?? false) : null,
             modId: meta.modId || null,
+            slug: meta.slug || null,
+            deps: meta.deps || [],
             summary: meta.summary || null,
             gameVersions: meta.gameVersions || [],
           };
@@ -538,6 +540,7 @@ router.post('/:name/mods/install', async (req, res) => {
       }
     }
 
+    modsJson.mods[filename].deps = requiredDeps.map(d => d.modId);
     await fs.promises.writeFile(modsJsonPath, JSON.stringify(modsJson, null, 2), 'utf-8');
     res.json({ ok: true, filename, deps, failedDeps });
   } catch (err) {
@@ -641,6 +644,172 @@ router.post('/:name/mods/upload', upload.array('mods', 20), async (req, res) => 
     await fs.promises.unlink(path.join(state.cfg.dir, 'mods.json')).catch(() => {});
   }
   res.json({ ok: true, uploaded, errors });
+});
+
+// ── Datapacks ──────────────────────────────────────────────────────────────
+
+// POST /api/servers/:name/datapacks/install
+router.post('/:name/datapacks/install', async (req, res) => {
+  const name = decodeURIComponent(req.params.name);
+  const state = servers[name];
+  if (!state) return res.status(404).json({ error: 'Servidor no encontrado' });
+
+  const { modId, fileId } = req.body;
+  if (!modId || !fileId) return res.status(400).json({ error: 'Faltan parámetros: modId y fileId' });
+
+  const dir = path.join(state.cfg.dir, 'datapacks');
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+
+  const datapacksJsonPath = path.join(state.cfg.dir, 'datapacks.json');
+
+  try {
+    const urlResp = await fetch(`${CF_BASE}/mods/${modId}/files/${fileId}/download-url`, { headers: cfHeaders() });
+    const downloadUrl = (await urlResp.json())?.data;
+    if (!downloadUrl) throw new Error('No se pudo obtener URL de descarga');
+
+    const dlResp = await fetch(downloadUrl);
+    if (!dlResp.ok) throw new Error(`Error descargando: ${dlResp.status}`);
+
+    const rawName = decodeURIComponent(downloadUrl.split('/').pop().split('?')[0]);
+    const filename = rawName.endsWith('.zip') ? rawName : rawName + '.zip';
+    const dest = createWriteStream(path.join(dir, filename));
+    await new Promise((resolve, reject) => {
+      Readable.fromWeb(dlResp.body).pipe(dest);
+      dest.on('finish', resolve);
+      dest.on('error', reject);
+    });
+
+    // Fetch mod metadata and save to datapacks.json
+    try {
+      const modResp = await fetch(`${CF_BASE}/mods/${modId}`, { headers: cfHeaders() });
+      const modData = (await modResp.json())?.data;
+      if (modData) {
+        let meta = { datapacks: {} };
+        if (fs.existsSync(datapacksJsonPath)) {
+          try { meta = JSON.parse(await fs.promises.readFile(datapacksJsonPath, 'utf-8')); } catch {}
+        }
+        if (!meta.datapacks) meta.datapacks = {};
+        meta.datapacks[filename] = {
+          modId: modData.id,
+          cfName: modData.name,
+          slug: modData.slug,
+          logo: modData.logo?.thumbnailUrl || modData.logo?.url || null,
+          summary: modData.summary || null,
+          gameVersions: modData.latestFilesIndexes?.map(f => f.gameVersion).filter(Boolean) ?? [],
+        };
+        await fs.promises.writeFile(datapacksJsonPath, JSON.stringify(meta, null, 2), 'utf-8');
+      }
+    } catch (metaErr) {
+      console.warn('Could not save datapack metadata:', metaErr.message);
+    }
+
+    res.json({ ok: true, filename });
+  } catch (err) {
+    console.error('Error instalando datapack:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/servers/:name/datapacks
+router.get('/:name/datapacks', async (req, res) => {
+  const name = decodeURIComponent(req.params.name);
+  const state = servers[name];
+  if (!state) return res.status(404).json({ error: 'Servidor no encontrado' });
+
+  const dir = path.join(state.cfg.dir, 'datapacks');
+  if (!fs.existsSync(dir)) return res.json({ datapacks: [] });
+
+  const datapacksJsonPath = path.join(state.cfg.dir, 'datapacks.json');
+  let meta = null;
+  if (fs.existsSync(datapacksJsonPath)) {
+    try { meta = JSON.parse(await fs.promises.readFile(datapacksJsonPath, 'utf-8')); } catch {}
+  }
+
+  try {
+    const files = await fs.promises.readdir(dir);
+    const datapacks = await Promise.all(
+      files
+        .filter(f => f.endsWith('.zip') || f.endsWith('.zip.disabled'))
+        .map(async filename => {
+          const stat = await fs.promises.stat(path.join(dir, filename));
+          const enabled = !filename.endsWith('.disabled');
+          const baseName = filename.replace(/\.disabled$/, '');
+          const entry = meta?.datapacks?.[baseName] || {};
+          return {
+            filename,
+            name: entry.cfName || baseName.replace(/\.zip$/, ''),
+            enabled,
+            size: stat.size,
+            modId: entry.modId || null,
+            slug: entry.slug || null,
+            logo: entry.logo || null,
+            summary: entry.summary || null,
+            gameVersions: entry.gameVersions || [],
+          };
+        })
+    );
+    datapacks.sort((a, b) => a.name.localeCompare(b.name));
+    res.json({ datapacks });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/servers/:name/datapacks/toggle
+router.post('/:name/datapacks/toggle', async (req, res) => {
+  const name = decodeURIComponent(req.params.name);
+  const state = servers[name];
+  if (!state) return res.status(404).json({ error: 'Servidor no encontrado' });
+
+  const { filename } = req.body;
+  if (!filename) return res.status(400).json({ error: 'filename requerido' });
+
+  const dir = path.join(state.cfg.dir, 'datapacks');
+  const oldPath = path.join(dir, filename);
+  if (!fs.existsSync(oldPath)) return res.status(404).json({ error: 'Archivo no encontrado' });
+
+  const isDisabled = filename.endsWith('.disabled');
+  const newFilename = isDisabled ? filename.replace(/\.disabled$/, '') : filename + '.disabled';
+
+  try {
+    await fs.promises.rename(oldPath, path.join(dir, newFilename));
+    res.json({ ok: true, newFilename });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/servers/:name/datapacks/:filename
+router.delete('/:name/datapacks/:filename', async (req, res) => {
+  const name = decodeURIComponent(req.params.name);
+  const state = servers[name];
+  if (!state) return res.status(404).json({ error: 'Servidor no encontrado' });
+
+  const filename = decodeURIComponent(req.params.filename);
+  const dir = path.join(state.cfg.dir, 'datapacks');
+  const filePath = path.join(dir, filename);
+  if (!filePath.startsWith(path.resolve(dir))) return res.status(403).json({ error: 'Acceso denegado' });
+
+  try {
+    await fs.promises.unlink(filePath);
+
+    // Remove from datapacks.json
+    const datapacksJsonPath = path.join(state.cfg.dir, 'datapacks.json');
+    if (fs.existsSync(datapacksJsonPath)) {
+      try {
+        const meta = JSON.parse(await fs.promises.readFile(datapacksJsonPath, 'utf-8'));
+        const baseName = filename.replace(/\.disabled$/, '');
+        if (meta.datapacks?.[baseName]) {
+          delete meta.datapacks[baseName];
+          await fs.promises.writeFile(datapacksJsonPath, JSON.stringify(meta, null, 2), 'utf-8');
+        }
+      } catch {}
+    }
+
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 export default router;

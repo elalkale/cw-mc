@@ -1,19 +1,46 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { io } from 'socket.io-client';
 import {
   Play, Square, PowerOff, HardDrive, Download,
   Activity, Wifi, Tag, Terminal, Send, Copy, Trash2, X, FolderOpen,
-  Package, Search, RefreshCw, Upload, HelpCircle, CheckCircle2, AlertCircle,
+  Package, Search, RefreshCw, Upload, HelpCircle, CheckCircle2, AlertCircle, Database,
+  ArrowUpDown,
 } from 'lucide-react';
 import { API_BASE, fetchWithToken } from '../lib/api';
 import FileExplorer from './FileExplorer';
 import ModCatalog from './ModCatalog';
+import DatapackCatalogModal from './DatapackCatalogModal';
+import DatapackCatalog from './DatapackCatalog';
 import ServerConfig from './ServerConfig';
+import FilterSelect from './FilterSelect';
+import knownDatapackLoaders from '../data/datapackLoaders.json';
 import { Settings2 } from 'lucide-react';
 
 const LOADER_NAMES  = { 1: 'Forge', 4: 'Fabric', 5: 'Quilt', 6: 'NeoForge' };
 const LOADER_COLORS = { 1: 'bg-orange-500/15 text-orange-300 border-orange-500/25', 4: 'bg-blue-500/15 text-blue-300 border-blue-500/25', 5: 'bg-purple-500/15 text-purple-300 border-purple-500/25', 6: 'bg-yellow-500/15 text-yellow-300 border-yellow-500/25' };
+
+const DATAPACK_LOADER_IDS = new Set(knownDatapackLoaders.map(l => l.curseforgeId));
+const DATAPACK_LOADER_SLUGS = new Set(knownDatapackLoaders.map(l => l.slug));
+
+function DatapackLogo({ logo, darkMode }: { logo: string | null; darkMode: boolean }) {
+  const [err, setErr] = React.useState(false);
+  if (logo && !err) {
+    return (
+      <img
+        src={logo}
+        alt=""
+        onError={() => setErr(true)}
+        className="w-8 h-8 rounded-lg flex-shrink-0 object-cover"
+      />
+    );
+  }
+  return (
+    <div className={`w-8 h-8 rounded-lg flex-shrink-0 flex items-center justify-center ${darkMode ? 'bg-indigo-500/15' : 'bg-indigo-50'}`}>
+      <Database size={14} className="text-indigo-400 opacity-70" />
+    </div>
+  );
+}
 
 export default function ServerDetail({ server, data, onStart, onStop, onForceStop, onDelete, darkMode }) {
   const [logs, setLogs] = useState('');
@@ -40,17 +67,30 @@ export default function ServerDetail({ server, data, onStart, onStop, onForceSto
   // ── File explorer ────────────────────────────────────────────────────────
   const [showFiles, setShowFiles] = useState(false);
 
-  // ── Mods ─────────────────────────────────────────────────────────────────
+  // ── Resources ─────────────────────────────────────────────────────────────
+  const [resourceTab, setResourceTab] = useState('mods');
+  // Mods
   const [mods, setMods] = useState([]);
   const [loadingMods, setLoadingMods] = useState(false);
   const [togglingMod, setTogglingMod] = useState(null);
   const [deletingMod, setDeletingMod] = useState(null);
   const [modToDelete, setModToDelete] = useState(null);
   const [modSearch, setModSearch] = useState('');
+  const [modSort, setModSort] = useState('default');
   const [uploadingMods, setUploadingMods] = useState(false);
   const [showModCatalog, setShowModCatalog] = useState(false);
   const [identifyingMods, setIdentifyingMods] = useState(false);
   const modUploadRef = useRef(null);
+  // Datapacks
+  const [datapacks, setDatapacks] = useState([]);
+  const [loadingDatapacks, setLoadingDatapacks] = useState(false);
+  const [togglingDatapack, setTogglingDatapack] = useState(null);
+  const [deletingDatapack, setDeletingDatapack] = useState(null);
+  const [datapackToDelete, setDatapackToDelete] = useState(null);
+  const [showDatapackSuggestion, setShowDatapackSuggestion] = useState(false);
+  const [datapackSuggestionDismissed, setDatapackSuggestionDismissed] = useState(false);
+  const [showDatapackCatalog, setShowDatapackCatalog] = useState(false);
+  const [showDatapackCatalogBrowse, setShowDatapackCatalogBrowse] = useState(false);
 
   const preRef = useRef<HTMLPreElement>(null);
   const socket = useRef(null);
@@ -216,8 +256,12 @@ export default function ServerDetail({ server, data, onStart, onStop, onForceSto
   };
 
   useEffect(() => {
-    if (tab === 'mods') fetchMods();
+    if (tab === 'recursos') fetchMods();
   }, [tab]);
+
+  useEffect(() => {
+    if (tab === 'recursos' && resourceTab === 'datapacks') fetchDatapacks();
+  }, [tab, resourceTab]);
 
   const toggleMod = async (mod) => {
     setTogglingMod(mod.filename);
@@ -233,6 +277,31 @@ export default function ServerDetail({ server, data, onStart, onStop, onForceSto
           ? { ...m, filename: d.newFilename, enabled: !m.enabled }
           : m
       ));
+
+      // Cascade disable: if we just disabled a mod, also disable dependents (BFS)
+      if (mod.enabled && mod.modId) {
+        const toDisable = [];
+        const queue = [mod.modId];
+        const visited = new Set([mod.modId]);
+        while (queue.length > 0) {
+          const currentModId = queue.shift();
+          for (const m of mods) {
+            if (!m.enabled || !m.modId || visited.has(m.modId)) continue;
+            if ((m.deps || []).includes(currentModId)) {
+              toDisable.push(m);
+              visited.add(m.modId);
+              queue.push(m.modId);
+            }
+          }
+        }
+        for (const dep of toDisable) {
+          await fetchWithToken(
+            `${API_BASE}/api/servers/${encodeURIComponent(server)}/mods/toggle`,
+            { method: 'POST', body: JSON.stringify({ filename: dep.filename }) }
+          ).catch(() => {});
+        }
+        if (toDisable.length > 0) fetchMods();
+      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -261,9 +330,75 @@ export default function ServerDetail({ server, data, onStart, onStop, onForceSto
     ? `${(bytes / 1024).toFixed(0)} KB`
     : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 
-  const filteredMods = mods.filter(m =>
-    m.name.toLowerCase().includes(modSearch.toLowerCase())
-  );
+  const filteredMods = useMemo(() => {
+    let list = mods.filter(m => m.name.toLowerCase().includes(modSearch.toLowerCase()));
+    if (modSort === 'name')      return [...list].sort((a, b) => a.name.localeCompare(b.name));
+    if (modSort === 'name-desc') return [...list].sort((a, b) => b.name.localeCompare(a.name));
+    if (modSort === 'enabled')   return [...list].sort((a, b) => Number(b.enabled) - Number(a.enabled));
+    if (modSort === 'disabled')  return [...list].sort((a, b) => Number(a.enabled) - Number(b.enabled));
+    return list;
+  }, [mods, modSearch, modSort]);
+
+  // ── Datapacks helpers ───────────────────────────────────────────────────
+  const fetchDatapacks = async () => {
+    setLoadingDatapacks(true);
+    try {
+      const r = await fetchWithToken(`${API_BASE}/api/servers/${encodeURIComponent(server)}/datapacks`);
+      const d = await r.json();
+      setDatapacks(d.datapacks || []);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingDatapacks(false);
+    }
+  };
+
+  const toggleDatapack = async (dp) => {
+    setTogglingDatapack(dp.filename);
+    try {
+      const r = await fetchWithToken(
+        `${API_BASE}/api/servers/${encodeURIComponent(server)}/datapacks/toggle`,
+        { method: 'POST', body: JSON.stringify({ filename: dp.filename }) }
+      );
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error);
+      setDatapacks(prev => prev.map(p =>
+        p.filename === dp.filename ? { ...p, filename: d.newFilename, enabled: !p.enabled } : p
+      ));
+    } catch (err) { console.error(err); }
+    finally { setTogglingDatapack(null); }
+  };
+
+  const deleteDatapack = async (dp) => {
+    setDeletingDatapack(dp.filename);
+    try {
+      const r = await fetchWithToken(
+        `${API_BASE}/api/servers/${encodeURIComponent(server)}/datapacks/${encodeURIComponent(dp.filename)}`,
+        { method: 'DELETE' }
+      );
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error);
+      setDatapacks(prev => prev.filter(p => p.filename !== dp.filename));
+    } catch (err) { console.error(err); }
+    finally { setDeletingDatapack(null); }
+  };
+
+  const handleSwitchToDatapacks = () => {
+    setResourceTab('datapacks');
+    const hasModLoader = (data.modpack?.modLoaders?.length ?? 0) > 0;
+    if (!hasModLoader) return;
+    const ignored = localStorage.getItem(`datapackLoaderIgnored_${server}`) === 'true';
+    if (ignored) return;
+    const hasLoader = mods.some(m =>
+      (m.modId && DATAPACK_LOADER_IDS.has(m.modId)) ||
+      (m.slug && DATAPACK_LOADER_SLUGS.has(m.slug))
+    );
+    if (!hasLoader) setShowDatapackSuggestion(true);
+  };
+
+  const formatDatapackSize = bytes => bytes < 1024 * 1024
+    ? `${(bytes / 1024).toFixed(0)} KB`
+    : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 
   return (
     <div className="flex flex-col space-y-4">
@@ -454,7 +589,7 @@ export default function ServerDetail({ server, data, onStart, onStop, onForceSto
       >
         {[
           { id: 'consola',       label: 'Consola' },
-          { id: 'mods',          label: 'Mods' },
+          { id: 'recursos',      label: 'Recursos' },
           { id: 'gestion',       label: 'Gestión' },
           { id: 'configuracion', label: 'Configuración' },
         ].map(t => (
@@ -522,199 +657,310 @@ export default function ServerDetail({ server, data, onStart, onStop, onForceSto
         </div>
       )}
 
-      {/* ── Mods ─────────────────────────────────────────────────────────────── */}
-      {tab === 'mods' && (
-        <div className={`rounded-2xl border p-4 flex flex-col gap-3 ${darkMode
+      {/* ── Recursos ─────────────────────────────────────────────────────────── */}
+      {tab === 'recursos' && (
+        <div className={`rounded-2xl border flex flex-col ${darkMode
           ? 'bg-gradient-to-br from-gray-800/90 via-purple-950/10 to-gray-900 border-purple-500/25'
           : 'bg-gradient-to-br from-white to-purple-50/70 border-purple-300/60 shadow-sm'
         }`}>
 
-          {/* Header */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${darkMode ? 'bg-purple-500/15' : 'bg-purple-50'}`}>
-                <Package size={14} className="text-purple-400" />
-              </div>
-              <span className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Gestor de mods</span>
-              {mods.length > 0 && (
-                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${darkMode ? 'bg-gray-700 text-gray-400' : 'bg-gray-100 text-gray-500'}`}>
-                  {mods.filter(m => m.enabled).length}/{mods.length}
-                </span>
-              )}
-            </div>
-            <div className="flex items-center gap-1 ">
-              <input
-                ref={modUploadRef}
-                type="file"
-                accept=".jar"
-                multiple
-                className="hidden"
-                onChange={handleModUpload}
-              />
-              {/* Botón catálogo */}
-              <button
-                onClick={() => setShowModCatalog(true)}
-                aria-label="Buscar mod en catálogo"
-                title="Buscar mod en catálogo"
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${darkMode
-                  ? 'bg-purple-500/15 hover:bg-purple-500/25 text-purple-300 hover:text-purple-200'
-                  : 'bg-purple-50 hover:bg-purple-100 text-purple-600 hover:text-purple-700'
-                }`}
-              >
-                <Package size={12} aria-hidden="true" />
-                Catálogo
-              </button>
-              {/* Botón subir .jar */}
-              <button
-                onClick={() => modUploadRef.current?.click()}
-                disabled={uploadingMods}
-                aria-label="Subir mod .jar"
-                title="Subir mod (.jar)"
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:opacity-40 ${darkMode
-                  ? 'hover:bg-gray-700 text-gray-400 hover:text-gray-200'
-                  : 'hover:bg-gray-100 text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                {uploadingMods
-                  ? <span className="w-3 h-3 rounded-full border-2 border-t-transparent border-current animate-spin" />
-                  : <Upload size={12} aria-hidden="true" />}
-                Subir
-              </button>
-              {/* Recargar */}
-              <button
-                onClick={fetchMods}
-                disabled={loadingMods}
-                aria-label="Recargar mods"
-                className={`p-1.5 rounded-lg transition-colors disabled:opacity-40 ${darkMode ? 'hover:bg-gray-700 text-gray-400 hover:text-gray-200' : 'hover:bg-gray-100 text-gray-500 hover:text-gray-700'}`}
-              >
-                <RefreshCw size={13} className={loadingMods ? 'animate-spin' : ''} />
-              </button>
-            </div>
-          </div>
-
-          {/* Búsqueda */}
-          <div className="relative">
-            <Search size={13} className={`absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none ${darkMode ? 'text-gray-500' : 'text-gray-400'}`} />
-            <input
-              type="text"
-              value={modSearch}
-              onChange={e => setModSearch(e.target.value)}
-              placeholder="Buscar mod..."
-              className={`w-full pl-8 pr-3 py-2 rounded-xl text-sm border transition-colors focus:outline-none ${darkMode
-                ? 'bg-gray-900 border-gray-700 text-gray-200 placeholder-gray-600 focus:border-purple-500/60'
-                : 'bg-gray-50 border-gray-200 text-gray-800 placeholder-gray-400 focus:border-purple-400'
+          {/* Sub-tabs */}
+          <div className="flex gap-1 px-3 pt-3 pb-0">
+            <button
+              onClick={() => setResourceTab('mods')}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-t-xl text-xs font-medium border-b-2 transition-all ${resourceTab === 'mods'
+                ? darkMode ? 'text-purple-300 border-purple-500 bg-purple-500/10' : 'text-purple-700 border-purple-500 bg-purple-50'
+                : darkMode ? 'text-gray-500 border-transparent hover:text-gray-300 hover:bg-gray-700/30' : 'text-gray-400 border-transparent hover:text-gray-600 hover:bg-gray-100/60'
               }`}
-            />
+            >
+              <Package size={12} />
+              Mods {mods.length > 0 && `(${mods.filter(m => m.enabled).length}/${mods.length})`}
+            </button>
+            <button
+              onClick={handleSwitchToDatapacks}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-t-xl text-xs font-medium border-b-2 transition-all ${resourceTab === 'datapacks'
+                ? darkMode ? 'text-purple-300 border-purple-500 bg-purple-500/10' : 'text-purple-700 border-purple-500 bg-purple-50'
+                : darkMode ? 'text-gray-500 border-transparent hover:text-gray-300 hover:bg-gray-700/30' : 'text-gray-400 border-transparent hover:text-gray-600 hover:bg-gray-100/60'
+              }`}
+            >
+              <Database size={12} />
+              Datapacks {datapacks.length > 0 && `(${datapacks.filter(d => d.enabled).length}/${datapacks.length})`}
+            </button>
           </div>
+          <div className={`border-t mx-0 ${darkMode ? 'border-gray-700/50' : 'border-gray-200'}`} />
 
-          {/* Banner identificando */}
-          {identifyingMods && (
-            <div className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs ${darkMode
-              ? 'bg-purple-500/10 border border-purple-500/20 text-purple-300'
-              : 'bg-purple-50 border border-purple-200 text-purple-600'
-            }`}>
-              <RefreshCw size={11} className="animate-spin flex-shrink-0" />
-              Identificando mods con CurseForge…
+          {/* ── Mods sub-tab ── */}
+          {resourceTab === 'mods' && (
+            <div className="p-4 flex flex-col gap-3">
+              {/* Header */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${darkMode ? 'bg-purple-500/15' : 'bg-purple-50'}`}>
+                    <Package size={14} className="text-purple-400" />
+                  </div>
+                  <span className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Mods instalados</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <input ref={modUploadRef} type="file" accept=".jar" multiple className="hidden" onChange={handleModUpload} />
+                  <button
+                    onClick={() => setShowModCatalog(true)}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${darkMode
+                      ? 'bg-purple-500/15 hover:bg-purple-500/25 text-purple-300 hover:text-purple-200'
+                      : 'bg-purple-50 hover:bg-purple-100 text-purple-600 hover:text-purple-700'
+                    }`}
+                  >
+                    <Package size={12} /> Catálogo
+                  </button>
+                  <button
+                    onClick={() => modUploadRef.current?.click()}
+                    disabled={uploadingMods}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:opacity-40 ${darkMode
+                      ? 'hover:bg-gray-700 text-gray-400 hover:text-gray-200'
+                      : 'hover:bg-gray-100 text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    {uploadingMods ? <span className="w-3 h-3 rounded-full border-2 border-t-transparent border-current animate-spin" /> : <Upload size={12} />}
+                    Subir
+                  </button>
+                  <button
+                    onClick={fetchMods}
+                    disabled={loadingMods}
+                    className={`p-1.5 rounded-lg transition-colors disabled:opacity-40 ${darkMode ? 'hover:bg-gray-700 text-gray-400 hover:text-gray-200' : 'hover:bg-gray-100 text-gray-500 hover:text-gray-700'}`}
+                  >
+                    <RefreshCw size={13} className={loadingMods ? 'animate-spin' : ''} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Filtros */}
+              <div className={`flex flex-wrap gap-2 p-3 rounded-2xl border ${darkMode ? 'bg-gray-800/40 border-gray-700/50' : 'bg-white/70 border-gray-200/80 shadow-sm'}`}>
+                <div className="relative flex-1 min-w-[160px]">
+                  <Search size={13} className={`absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none ${darkMode ? 'text-gray-500' : 'text-gray-400'}`} />
+                  <input
+                    type="text"
+                    value={modSearch}
+                    onChange={e => setModSearch(e.target.value)}
+                    placeholder="Buscar mod..."
+                    className={`w-full pl-8 pr-3 py-2 rounded-xl text-sm border transition-colors focus:outline-none ${darkMode
+                      ? 'bg-gray-800/80 border-gray-700/80 text-gray-200 placeholder-gray-500 focus:border-purple-500/50'
+                      : 'bg-white border-gray-200 text-gray-800 placeholder-gray-400 focus:border-purple-400'
+                    }`}
+                  />
+                </div>
+                <FilterSelect
+                  icon={ArrowUpDown}
+                  value={modSort}
+                  onChange={(v) => setModSort(String(v))}
+                  options={[
+                    { value: 'default',   label: 'Sin ordenar' },
+                    { value: 'name',      label: 'Nombre A–Z' },
+                    { value: 'name-desc', label: 'Nombre Z–A' },
+                    { value: 'enabled',   label: 'Activos primero' },
+                    { value: 'disabled',  label: 'Desactivados primero' },
+                  ]}
+                  placeholder="Ordenar"
+                  darkMode={darkMode}
+                />
+              </div>
+
+              {identifyingMods && (
+                <div className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs ${darkMode
+                  ? 'bg-purple-500/10 border border-purple-500/20 text-purple-300'
+                  : 'bg-purple-50 border border-purple-200 text-purple-600'
+                }`}>
+                  <RefreshCw size={11} className="animate-spin flex-shrink-0" />
+                  Identificando mods con CurseForge…
+                </div>
+              )}
+
+              {loadingMods ? (
+                <div className="flex flex-col gap-1.5">
+                  {[...Array(4)].map((_, i) => (
+                    <div key={i} className={`h-14 rounded-xl animate-pulse ${darkMode ? 'bg-gray-700/50' : 'bg-gray-100'}`} />
+                  ))}
+                </div>
+              ) : filteredMods.length === 0 ? (
+                <div className={`flex flex-col items-center justify-center gap-2 py-10 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>
+                  <Package size={28} className="opacity-30" />
+                  <p className="text-xs text-center">
+                    {mods.length === 0 ? 'No se encontraron mods' : 'Sin resultados para la búsqueda'}
+                  </p>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-1 min-h-[8rem] max-h-[calc(100vh-580px)] overflow-y-auto custom-scrollbar pr-1">
+                  {filteredMods.map(mod => (
+                    <div
+                      key={mod.filename}
+                      className={`flex items-center gap-2.5 px-2.5 py-2 rounded-xl border transition-all ${darkMode
+                        ? 'border-gray-700/40 hover:border-gray-600/60 hover:bg-gray-700/20'
+                        : 'border-gray-100 hover:border-gray-200 hover:bg-gray-50'
+                      } ${!mod.enabled ? 'opacity-55' : ''}`}
+                    >
+                      <div className={`w-8 h-8 rounded-lg flex-shrink-0 flex items-center justify-center overflow-hidden ${
+                        mod.logo ? '' : mod.recognized === false
+                          ? darkMode ? 'bg-gray-700/70' : 'bg-gray-100'
+                          : darkMode ? 'bg-purple-500/15' : 'bg-purple-50'
+                      }`}>
+                        {mod.logo ? (
+                          <img src={mod.logo} alt="" className="w-full h-full object-cover" onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
+                        ) : mod.recognized === false ? (
+                          <HelpCircle size={15} className={darkMode ? 'text-gray-500' : 'text-gray-400'} />
+                        ) : (
+                          <Package size={15} className="text-purple-400 opacity-70" />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className={`text-sm font-medium truncate ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>{mod.name}</p>
+                        <div className="flex items-center gap-1.5 mt-0.5 min-w-0">
+                          <span className={`text-xs flex-shrink-0 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>{formatSize(mod.size)}</span>
+                          {mod.recognized === true && (
+                            <span className={`text-[10px] font-mono truncate ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>{mod.filename.replace(/\.jar(\.disabled)?$/, '')}</span>
+                          )}
+                          {mod.recognized === false && (
+                            <span className={`text-[10px] flex-shrink-0 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>· no reconocido</span>
+                          )}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => toggleMod(mod)}
+                        disabled={togglingMod !== null || deletingMod !== null}
+                        aria-label={mod.enabled ? `Desactivar ${mod.name}` : `Activar ${mod.name}`}
+                        className={`relative flex-shrink-0 w-11 h-6 rounded-full transition-colors duration-200 disabled:cursor-wait ${
+                          mod.enabled ? 'bg-green-500 hover:bg-green-400' : darkMode ? 'bg-gray-600 hover:bg-gray-500' : 'bg-gray-300 hover:bg-gray-400'
+                        }`}
+                      >
+                        <span className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-all duration-200 ${mod.enabled ? 'left-6' : 'left-1'} ${togglingMod === mod.filename ? 'opacity-60' : ''}`} />
+                      </button>
+                      <button
+                        onClick={() => setModToDelete(mod)}
+                        disabled={togglingMod !== null || deletingMod !== null}
+                        className={`flex-shrink-0 p-1.5 rounded-lg transition-colors disabled:cursor-wait ${
+                          deletingMod === mod.filename ? 'opacity-50 cursor-wait'
+                            : darkMode ? 'text-gray-600 hover:text-red-400 hover:bg-red-500/10' : 'text-gray-300 hover:text-red-500 hover:bg-red-50'
+                        }`}
+                      >
+                        {deletingMod === mod.filename
+                          ? <span className="w-3.5 h-3.5 rounded-full border-2 border-t-transparent border-current animate-spin block" />
+                          : <Trash2 size={14} />}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
-          {/* Lista */}
-          {loadingMods ? (
-            <div className="flex flex-col gap-1.5">
-              {[...Array(4)].map((_, i) => (
-                <div key={i} className={`h-14 rounded-xl animate-pulse ${darkMode ? 'bg-gray-700/50' : 'bg-gray-100'}`} />
-              ))}
-            </div>
-          ) : filteredMods.length === 0 ? (
-            <div className={`flex flex-col items-center justify-center gap-2 py-10 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>
-              <Package size={28} className="opacity-30" />
-              <p className="text-xs text-center">
-                {mods.length === 0 ? 'No se encontraron mods' : 'Sin resultados para la búsqueda'}
-              </p>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-1 min-h-[8rem] max-h-[calc(100vh-540px)] overflow-y-auto custom-scrollbar pr-1">
-              {filteredMods.map(mod => (
-                <div
-                  key={mod.filename}
-                  className={`flex items-center gap-2.5 px-2.5 py-2 rounded-xl border transition-all ${darkMode
-                    ? 'border-gray-700/40 hover:border-gray-600/60 hover:bg-gray-700/20'
-                    : 'border-gray-100 hover:border-gray-200 hover:bg-gray-50'
-                  } ${!mod.enabled ? 'opacity-55' : ''}`}
-                >
-                  {/* Logo / icono */}
-                  <div className={`w-8 h-8 rounded-lg flex-shrink-0 flex items-center justify-center overflow-hidden ${
-                    mod.logo
-                      ? ''
-                      : mod.recognized === false
-                        ? darkMode ? 'bg-gray-700/70' : 'bg-gray-100'
-                        : darkMode ? 'bg-purple-500/15' : 'bg-purple-50'
-                  }`}>
-                    {mod.logo ? (
-                      <img
-                        src={mod.logo}
-                        alt=""
-                        className="w-full h-full object-cover"
-                        onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
-                      />
-                    ) : mod.recognized === false ? (
-                      <HelpCircle size={15} className={darkMode ? 'text-gray-500' : 'text-gray-400'} />
-                    ) : (
-                      <Package size={15} className="text-purple-400 opacity-70" />
-                    )}
-                  </div>
+          {/* ── Datapacks sub-tab ── */}
+          {resourceTab === 'datapacks' && (
+            <div className="p-4 flex flex-col gap-3">
+              {/* Dismissed message */}
+              {datapackSuggestionDismissed && (
+                <div className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs ${darkMode
+                  ? 'bg-gray-700/50 border border-gray-600/40 text-gray-400'
+                  : 'bg-gray-100 border border-gray-200 text-gray-500'
+                }`}>
+                  Esta sugerencia no volverá a aparecer para este servidor.
+                </div>
+              )}
 
-                  <div className="flex-1 min-w-0">
-                    <p className={`text-sm font-medium truncate ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
-                      {mod.name}
-                    </p>
-                    <div className="flex items-center gap-1.5 mt-0.5 min-w-0">
-                      <span className={`text-xs flex-shrink-0 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>{formatSize(mod.size)}</span>
-                      {mod.recognized === true && (
-                        <span className={`text-[10px] font-mono truncate ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>
-                          {mod.filename.replace(/\.jar(\.disabled)?$/, '')}
-                        </span>
-                      )}
-                      {mod.recognized === false && (
-                        <span className={`text-[10px] flex-shrink-0 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`} title="No encontrado en CurseForge">· no reconocido</span>
-                      )}
-                    </div>
+              {/* Header */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${darkMode ? 'bg-indigo-500/15' : 'bg-indigo-50'}`}>
+                    <Database size={14} className="text-indigo-400" />
                   </div>
-
-                  {/* Toggle enable/disable */}
+                  <span className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Datapacks</span>
+                  {datapacks.length > 0 && (
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${darkMode ? 'bg-gray-700 text-gray-400' : 'bg-gray-100 text-gray-500'}`}>
+                      {datapacks.filter(d => d.enabled).length}/{datapacks.length}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-1">
                   <button
-                    onClick={() => toggleMod(mod)}
-                    disabled={togglingMod !== null || deletingMod !== null}
-                    aria-label={mod.enabled ? `Desactivar ${mod.name}` : `Activar ${mod.name}`}
-                    className={`relative flex-shrink-0 w-11 h-6 rounded-full transition-colors duration-200 disabled:cursor-wait ${
-                      mod.enabled
-                        ? 'bg-green-500 hover:bg-green-400'
-                        : darkMode ? 'bg-gray-600 hover:bg-gray-500' : 'bg-gray-300 hover:bg-gray-400'
+                    onClick={() => setShowDatapackCatalogBrowse(true)}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${darkMode
+                      ? 'bg-purple-500/15 hover:bg-purple-500/25 text-purple-300 hover:text-purple-200'
+                      : 'bg-purple-50 hover:bg-purple-100 text-purple-600 hover:text-purple-700'
                     }`}
                   >
-                    <span className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-all duration-200 ${mod.enabled ? 'left-6' : 'left-1'} ${togglingMod === mod.filename ? 'opacity-60' : ''}`} />
+                    <Database size={12} /> Catálogo
                   </button>
-
-                  {/* Borrar mod */}
+                  {(data.modpack?.modLoaders?.length > 0) && (
+                    <button
+                      onClick={() => setShowDatapackCatalog(true)}
+                      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${darkMode
+                        ? 'bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-300 hover:text-indigo-200'
+                        : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-600 hover:text-indigo-700'
+                      }`}
+                    >
+                      <Package size={12} /> Loaders
+                    </button>
+                  )}
                   <button
-                    onClick={() => setModToDelete(mod)}
-                    disabled={togglingMod !== null || deletingMod !== null}
-                    aria-label={`Eliminar ${mod.name}`}
-                    className={`flex-shrink-0 p-1.5 rounded-lg transition-colors disabled:cursor-wait ${
-                      deletingMod === mod.filename
-                        ? 'opacity-50 cursor-wait'
-                        : darkMode
-                          ? 'text-gray-600 hover:text-red-400 hover:bg-red-500/10'
-                          : 'text-gray-300 hover:text-red-500 hover:bg-red-50'
-                    }`}
+                    onClick={fetchDatapacks}
+                    disabled={loadingDatapacks}
+                    className={`p-1.5 rounded-lg transition-colors disabled:opacity-40 ${darkMode ? 'hover:bg-gray-700 text-gray-400 hover:text-gray-200' : 'hover:bg-gray-100 text-gray-500 hover:text-gray-700'}`}
                   >
-                    {deletingMod === mod.filename
-                      ? <span className="w-3.5 h-3.5 rounded-full border-2 border-t-transparent border-current animate-spin block" />
-                      : <Trash2 size={14} />
-                    }
+                    <RefreshCw size={13} className={loadingDatapacks ? 'animate-spin' : ''} />
                   </button>
                 </div>
-              ))}
+              </div>
+
+              {loadingDatapacks ? (
+                <div className="flex flex-col gap-1.5">
+                  {[...Array(3)].map((_, i) => (
+                    <div key={i} className={`h-12 rounded-xl animate-pulse ${darkMode ? 'bg-gray-700/50' : 'bg-gray-100'}`} />
+                  ))}
+                </div>
+              ) : datapacks.length === 0 ? (
+                <div className={`flex flex-col items-center justify-center gap-2 py-10 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>
+                  <Database size={28} className="opacity-30" />
+                  <p className="text-xs text-center">No hay datapacks en la carpeta datapacks/</p>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-1 min-h-[8rem] max-h-[calc(100vh-580px)] overflow-y-auto custom-scrollbar pr-1">
+                  {datapacks.map(dp => (
+                    <div
+                      key={dp.filename}
+                      className={`flex items-center gap-2.5 px-2.5 py-2 rounded-xl border transition-all ${darkMode
+                        ? 'border-gray-700/40 hover:border-gray-600/60 hover:bg-gray-700/20'
+                        : 'border-gray-100 hover:border-gray-200 hover:bg-gray-50'
+                      } ${!dp.enabled ? 'opacity-55' : ''}`}
+                    >
+                      <DatapackLogo logo={dp.logo} darkMode={darkMode} />
+                      <div className="flex-1 min-w-0">
+                        <p className={`text-sm font-medium truncate ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>{dp.name}</p>
+                        <span className={`text-xs ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>
+                          {dp.summary ? <span className="truncate block max-w-[220px]">{dp.summary}</span> : formatDatapackSize(dp.size)}
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => toggleDatapack(dp)}
+                        disabled={togglingDatapack !== null || deletingDatapack !== null}
+                        aria-label={dp.enabled ? `Desactivar ${dp.name}` : `Activar ${dp.name}`}
+                        className={`relative flex-shrink-0 w-11 h-6 rounded-full transition-colors duration-200 disabled:cursor-wait ${
+                          dp.enabled ? 'bg-green-500 hover:bg-green-400' : darkMode ? 'bg-gray-600 hover:bg-gray-500' : 'bg-gray-300 hover:bg-gray-400'
+                        }`}
+                      >
+                        <span className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-all duration-200 ${dp.enabled ? 'left-6' : 'left-1'} ${togglingDatapack === dp.filename ? 'opacity-60' : ''}`} />
+                      </button>
+                      <button
+                        onClick={() => setDatapackToDelete(dp)}
+                        disabled={togglingDatapack !== null || deletingDatapack !== null}
+                        className={`flex-shrink-0 p-1.5 rounded-lg transition-colors disabled:cursor-wait ${
+                          deletingDatapack === dp.filename ? 'opacity-50 cursor-wait'
+                            : darkMode ? 'text-gray-600 hover:text-red-400 hover:bg-red-500/10' : 'text-gray-300 hover:text-red-500 hover:bg-red-50'
+                        }`}
+                      >
+                        {deletingDatapack === dp.filename
+                          ? <span className="w-3.5 h-3.5 rounded-full border-2 border-t-transparent border-current animate-spin block" />
+                          : <Trash2 size={14} />}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -800,6 +1046,95 @@ export default function ServerDetail({ server, data, onStart, onStop, onForceSto
           onModInstalled={fetchMods}
           installedModIds={new Set(mods.filter(m => m.modId).map(m => m.modId))}
         />
+      )}
+
+      {/* ── Modal Sugerencia de Datapack Loader (auto) ───────────────────── */}
+      {showDatapackSuggestion && (
+        <DatapackCatalogModal
+          server={server}
+          modLoader={LOADER_NAMES[data.modpack?.modLoaders?.[0]]?.toLowerCase() ?? ''}
+          mcVersion={data.modpack?.gameVersions?.[0] ?? ''}
+          darkMode={darkMode}
+          onClose={() => setShowDatapackSuggestion(false)}
+          onInstalled={() => { setShowDatapackSuggestion(false); fetchMods(); }}
+          onIgnore={() => {
+            localStorage.setItem(`datapackLoaderIgnored_${server}`, 'true');
+            setShowDatapackSuggestion(false);
+            setDatapackSuggestionDismissed(true);
+            setTimeout(() => setDatapackSuggestionDismissed(false), 5000);
+          }}
+        />
+      )}
+
+      {/* ── Modal Catálogo de Datapack Loaders (manual) ──────────────────── */}
+      {showDatapackCatalog && (
+        <DatapackCatalogModal
+          server={server}
+          modLoader={LOADER_NAMES[data.modpack?.modLoaders?.[0]]?.toLowerCase() ?? ''}
+          mcVersion={data.modpack?.gameVersions?.[0] ?? ''}
+          darkMode={darkMode}
+          onClose={() => setShowDatapackCatalog(false)}
+          onInstalled={() => { setShowDatapackCatalog(false); fetchMods(); }}
+        />
+      )}
+
+      {/* ── Modal Catálogo de Datapacks (CurseForge) ─────────────────────── */}
+      {showDatapackCatalogBrowse && (
+        <DatapackCatalog
+          server={server}
+          mcVersion={data.modpack?.gameVersions?.[0] ?? ''}
+          darkMode={darkMode}
+          onClose={() => setShowDatapackCatalogBrowse(false)}
+          onInstalled={() => { setShowDatapackCatalogBrowse(false); fetchDatapacks(); }}
+        />
+      )}
+
+      {/* ── Modal Eliminar Datapack ───────────────────────────────────────── */}
+      {datapackToDelete && (
+        <>
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50" onClick={() => !deletingDatapack && setDatapackToDelete(null)} />
+          <div className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none px-4">
+            <div
+              className={`w-full max-w-sm rounded-2xl shadow-2xl border pointer-events-auto ${darkMode
+                ? 'bg-gradient-to-br from-gray-800 to-gray-900 border-red-500/30'
+                : 'bg-white border-red-200/70'
+              }`}
+              onClick={e => e.stopPropagation()}
+            >
+              <div className={`flex items-center justify-between px-5 py-4 border-b ${darkMode ? 'border-gray-700/60' : 'border-gray-200'}`}>
+                <div className="flex items-center gap-2">
+                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${darkMode ? 'bg-red-500/15' : 'bg-red-100'}`}>
+                    <Trash2 size={14} className="text-red-400" />
+                  </div>
+                  <h3 className={`font-semibold text-sm ${darkMode ? 'text-white' : 'text-gray-900'}`}>Eliminar datapack</h3>
+                </div>
+                <button onClick={() => !deletingDatapack && setDatapackToDelete(null)} className={`p-1.5 rounded-lg transition-colors ${darkMode ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-100 text-gray-500'}`}>
+                  <X size={15} />
+                </button>
+              </div>
+              <div className="px-5 py-4">
+                <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                  ¿Eliminar <span className="font-semibold text-red-400">{datapackToDelete.name}</span>?
+                </p>
+              </div>
+              <div className={`flex justify-end gap-2 px-5 py-4 border-t ${darkMode ? 'border-gray-700/60' : 'border-gray-200'}`}>
+                <button
+                  onClick={() => setDatapackToDelete(null)} disabled={!!deletingDatapack}
+                  className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors ${darkMode ? 'bg-gray-700 hover:bg-gray-600 text-gray-300' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'} disabled:opacity-50`}
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={() => deleteDatapack(datapackToDelete).then(() => setDatapackToDelete(null))}
+                  disabled={!!deletingDatapack}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-red-600 hover:bg-red-500 text-white transition-colors disabled:opacity-60"
+                >
+                  {deletingDatapack ? <><span className="w-3.5 h-3.5 rounded-full border-2 border-t-transparent border-white animate-spin" />Eliminando...</> : <><Trash2 size={14} />Eliminar</>}
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
       )}
 
       {/* ── Modal Explorador de archivos ─────────────────────────────────── */}

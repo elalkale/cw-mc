@@ -132,8 +132,9 @@ router.get('/mods/search', async (req, res) => {
   try {
     const params = new URLSearchParams();
     params.set('gameId', '432');
-    params.set('classId', '6');
-    const allowed = ['searchFilter', 'gameVersion', 'modLoaderType', 'sortField', 'sortOrder', 'index', 'pageSize', 'categoryId'];
+    // Allow caller to override classId (e.g. 6945 for datapacks, 12 for resource packs)
+    if (!req.query.classId) params.set('classId', '6');
+    const allowed = ['classId', 'searchFilter', 'gameVersion', 'modLoaderType', 'sortField', 'sortOrder', 'index', 'pageSize', 'categoryId'];
     for (const p of allowed) {
       if (req.query[p] !== undefined && req.query[p] !== '') params.set(p, req.query[p]);
     }
@@ -322,6 +323,21 @@ router.get('/mod/:modId/file/:fileId/download-url', async (req, res) => {
     res.json(await resp.json());
   } catch (err) {
     console.error('CurseForge download-url error:', err);
+    res.status(500).json({ error: 'Error consultando CurseForge' });
+  }
+});
+
+// GET /api/curseforge/mod/:modId/file/:fileId/changelog
+router.get('/mod/:modId/file/:fileId/changelog', async (req, res) => {
+  if (!CF_API_TOKEN) return res.json({ data: '' });
+  try {
+    const resp = await fetch(
+      `${CF_BASE}/mods/${req.params.modId}/files/${req.params.fileId}/changelog`,
+      { headers: cfHeaders() }
+    );
+    res.json(await resp.json());
+  } catch (err) {
+    console.error('CurseForge changelog error:', err);
     res.status(500).json({ error: 'Error consultando CurseForge' });
   }
 });
