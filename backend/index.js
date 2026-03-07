@@ -67,7 +67,7 @@ io.on('connection', socket => {
     const state = servers[serverName];
     if (!state) return socket.emit('error_msg', `Servidor desconocido: ${serverName}`);
     socket.join(serverName);
-    socket.emit('log_history', { server: serverName, logs: state.logs });
+    socket.emit('log_history', { server: serverName, logs: state.logs.join('\n') });
   });
 
   socket.on('command', ({ server: serverName, command }) => {

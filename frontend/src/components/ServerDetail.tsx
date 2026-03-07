@@ -43,7 +43,7 @@ function DatapackLogo({ logo, darkMode }: { logo: string | null; darkMode: boole
 }
 
 export default function ServerDetail({ server, data, onStart, onStop, onForceStop, onDelete, darkMode }) {
-  const [logs, setLogs] = useState('');
+  const [logs, setLogs] = useState<string[]>([]);
   const [tab, setTab] = useState('consola');
   const [command, setCommand] = useState('');
   const [isBackingUp, setIsBackingUp] = useState(false);
@@ -92,18 +92,28 @@ export default function ServerDetail({ server, data, onStart, onStop, onForceSto
   const [showDatapackCatalog, setShowDatapackCatalog] = useState(false);
   const [showDatapackCatalogBrowse, setShowDatapackCatalogBrowse] = useState(false);
 
-  const preRef = useRef<HTMLPreElement>(null);
+  const preRef = useRef<HTMLDivElement>(null);
   const socket = useRef(null);
   const logsId = `detail-logs-${server.replace(/\s+/g, '-')}`;
+
+  const makeTs = () => {
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `[${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}]`;
+  };
 
   useEffect(() => {
     socket.current = io(API_BASE, { auth: { token: localStorage.getItem('authToken') } });
     socket.current.emit('join', server);
-    socket.current.on('log', ({ server: srv, line }) => {
-      if (srv === server) setLogs(prev => prev + line);
+    socket.current.on('log', ({ server: srv, line }: { server: string; line: string }) => {
+      if (srv !== server) return;
+      const ts = makeTs();
+      const newLines = line.split('\n').filter(l => l.length > 0).map(l => `${ts} ${l.replace(/^\[\d{2}:\d{2}:\d{2}(?:\.\d+)?\]\s*/, '')}`);
+      setLogs(prev => [...prev, ...newLines]);
     });
-    socket.current.on('log_history', ({ server: srv, logs }) => {
-      if (srv === server) setLogs(logs || '');
+    socket.current.on('log_history', ({ server: srv, logs: raw }: { server: string; logs: string }) => {
+      if (srv !== server) return;
+      setLogs((raw || '').split('\n').filter(l => l.length > 0));
     });
     return () => socket.current.disconnect();
   }, [server]);
@@ -111,6 +121,12 @@ export default function ServerDetail({ server, data, onStart, onStop, onForceSto
   useEffect(() => {
     if (preRef.current) preRef.current.scrollTop = preRef.current.scrollHeight;
   }, [logs]);
+
+  const prevRunningRef = useRef(data.running);
+  useEffect(() => {
+    if (!prevRunningRef.current && data.running) setLogs([]);
+    prevRunningRef.current = data.running;
+  }, [data.running]);
 
   useEffect(() => {
     if (tab === 'consola' && preRef.current) {
@@ -441,7 +457,14 @@ export default function ServerDetail({ server, data, onStart, onStop, onForceSto
         {/* Icono + Info */}
         <div className="px-5 pb-4 -mt-4 sm:-mt-5 flex flex-row gap-4 items-start relative z-10">
           <div className="flex-shrink-0">
-            {data.icon ? (
+            {data.modpack?.logo ? (
+              <img
+                src={data.modpack.logo}
+                alt={`Logo de ${data.modpack.name || server}`}
+                onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                className={`w-16 h-16 sm:w-20 sm:h-20 rounded-2xl object-cover border-4 shadow-xl ${darkMode ? 'border-gray-900' : 'border-white'}`}
+              />
+            ) : data.icon ? (
               <img
                 src={`${API_BASE}/api/server-icon/${encodeURIComponent(server)}`}
                 alt={`Icono ${server}`}
@@ -621,15 +644,25 @@ export default function ServerDetail({ server, data, onStart, onStop, onForceSto
             </div>
           </div>
 
-          <pre
+          <div
             id={logsId}
-            ref={preRef}
+            ref={preRef as any}
             aria-live="polite"
             aria-atomic="false"
-            className="h-56 md:h-80 overflow-y-scroll px-4 py-3 font-mono text-xs leading-relaxed bg-gray-950 text-green-400 custom-scrollbar"
+            className="h-56 md:h-80 overflow-y-scroll px-4 py-3 font-mono text-xs leading-relaxed bg-gray-950 custom-scrollbar"
           >
-            {logs || '// Esperando logs...'}
-          </pre>
+            {logs.length === 0 ? (
+              <span className="text-gray-600">// Esperando logs...</span>
+            ) : logs.map((line, i) => {
+              const levelColor = /ERROR|FATAL|Exception|CAUSED BY/i.test(line) ? 'text-red-400' : /WARN/i.test(line) ? 'text-yellow-400' : 'text-green-400';
+              const tsMatch = line.match(/^(\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\])(.*)/s);
+              return (
+                <div key={i} className={`py-px break-all ${levelColor}`}>
+                  {tsMatch ? <><span className="text-gray-500">{tsMatch[1]}</span>{tsMatch[2]}</> : line}
+                </div>
+              );
+            })}
+          </div>
 
           <div className={`flex items-center gap-2.5 px-4 py-2.5 border-t ${darkMode ? 'bg-gray-900 border-gray-700/60' : 'bg-gray-50 border-gray-200'}`}>
             <span className="text-green-500 font-mono text-sm shrink-0 select-none">$</span>

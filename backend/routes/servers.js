@@ -245,12 +245,22 @@ export function createServerRoutes(io) {
 
     const child = spawn(startCmd, [], { cwd: state.cfg.dir, shell: true, env: spawnEnv });
     state.process = child;
-    state.logs = '';
+    state.logs = [];
     state.commandQueue = [];
+
+    const LOG_BUFFER = 500;
+    const tsNow = () => { const d = new Date(); const p = n => String(n).padStart(2, '0'); return `[${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}]`; };
+
+    const pushLines = (raw) => {
+      const ts = tsNow();
+      const newLines = raw.split('\n').filter(l => l.length > 0).map(l => `${ts} ${l.replace(/^\[\d{2}:\d{2}:\d{2}(?:\.\d+)?\]\s*/, '')}`);
+      state.logs.push(...newLines);
+      if (state.logs.length > LOG_BUFFER) state.logs.splice(0, state.logs.length - LOG_BUFFER);
+    };
 
     const handleOutput = (chunk) => {
       const s = chunk.toString();
-      state.logs += s;
+      pushLines(s);
       io.to(name).emit('log', { server: name, line: s });
     };
 
@@ -258,16 +268,18 @@ export function createServerRoutes(io) {
     child.stderr.on('data', handleOutput);
 
     child.on('error', (err) => {
-      const msg = `\n[error al iniciar proceso: ${err.message}]\n`;
-      state.logs += msg;
-      io.to(name).emit('log', { server: name, line: msg });
+      const msg = `[error al iniciar proceso: ${err.message}]`;
+      state.logs.push(`${tsNow()} ${msg}`);
+      if (state.logs.length > LOG_BUFFER) state.logs.splice(0, state.logs.length - LOG_BUFFER);
+      io.to(name).emit('log', { server: name, line: msg + '\n' });
       state.process = null;
     });
 
     child.on('exit', (code, signal) => {
-      const msg = `\n[process exited code=${code} signal=${signal}]\n`;
-      state.logs += msg;
-      io.to(name).emit('log', { server: name, line: msg });
+      const msg = `[process exited code=${code} signal=${signal}]`;
+      state.logs.push(`${tsNow()} ${msg}`);
+      if (state.logs.length > LOG_BUFFER) state.logs.splice(0, state.logs.length - LOG_BUFFER);
+      io.to(name).emit('log', { server: name, line: msg + '\n' });
       state.process = null;
     });
 

@@ -4,6 +4,14 @@ import { io } from "socket.io-client";
 import { Maximize2, Minimize2, Play, Square, Users, Terminal, Send, MoreVertical, Copy, Trash2, X } from "lucide-react";
 import { API_BASE, fetchWithToken } from "../lib/api";
 
+const LOADER_NAMES: Record<number, string> = { 1: 'Forge', 4: 'Fabric', 5: 'Quilt', 6: 'NeoForge' };
+const LOADER_COLORS = {
+  1: { dark: 'bg-orange-500/15 text-orange-300 border-orange-500/25', light: 'bg-orange-50 text-orange-700 border-orange-200' },
+  4: { dark: 'bg-blue-500/15 text-blue-300 border-blue-500/25',   light: 'bg-blue-50 text-blue-700 border-blue-200' },
+  5: { dark: 'bg-purple-500/15 text-purple-300 border-purple-500/25', light: 'bg-purple-50 text-purple-700 border-purple-200' },
+  6: { dark: 'bg-yellow-500/15 text-yellow-300 border-yellow-500/25', light: 'bg-yellow-50 text-yellow-700 border-yellow-200' },
+};
+
 export default function ServerCard({ server, data, onStart, onStop, darkMode }) {
   const navigate = useNavigate();
   const [logs, setLogs] = useState("");
@@ -131,16 +139,23 @@ export default function ServerCard({ server, data, onStart, onStop, darkMode }) 
 
         {/* Icono — dentro del banner, abajo-izquierda */}
         <div className="absolute bottom-2.5 left-3">
-          {data.icon ? (
+          {data.modpack?.logo ? (
+            <img
+              src={data.modpack.logo}
+              alt={`Logo de ${data.modpack?.name || server}`}
+              onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+              className="w-14 h-14 rounded-xl object-cover border border-white/20 shadow-md"
+            />
+          ) : data.icon ? (
             <img
               src={`${API_BASE}/api/server-icon/${encodeURIComponent(server)}`}
               alt={`Icono del servidor ${server}`}
               onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
-              className="w-9 h-9 rounded-lg object-cover border border-white/20 shadow-md"
+              className="w-14 h-14 rounded-xl object-cover border border-white/20 shadow-md"
             />
           ) : (
             <div
-              className="w-9 h-9 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-base shadow-md border border-white/10"
+              className="w-14 h-14 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-2xl shadow-md border border-white/10"
               aria-hidden="true"
             >
               🎮
@@ -248,6 +263,18 @@ export default function ServerCard({ server, data, onStart, onStop, darkMode }) 
               {data.modpack?.gameVersions?.[0] || data.version}
             </span>
           )}
+
+          {(() => {
+            const l = data.modpack?.modLoaders?.find((id: number) => LOADER_NAMES[id]);
+            return l != null ? (
+              <span className={`px-2 py-0.5 rounded-lg text-xs border ${darkMode
+                ? (LOADER_COLORS[l]?.dark ?? 'bg-gray-500/15 text-gray-300 border-gray-500/25')
+                : (LOADER_COLORS[l]?.light ?? 'bg-gray-100 text-gray-600 border-gray-200')
+              }`}>
+                {LOADER_NAMES[l]}
+              </span>
+            ) : null;
+          })()}
         </div>
 
         {/* ── Expanded ── */}

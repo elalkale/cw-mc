@@ -109,7 +109,7 @@ export function refreshServers() {
           modpack,
         },
         process: null,
-        logs: '',
+        logs: [],
         commandQueue: [],
       };
       console.log(`Servidor detectado: ${folder} (v${servers[folder].cfg.version})`);
