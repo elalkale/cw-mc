@@ -602,6 +602,11 @@ export default function ServerDetail({ server, data, onStart, onStop, onForceSto
           <p className={`text-sm font-bold ${darkMode ? 'text-purple-300' : 'text-purple-700'}`}>
             {data.modpack?.gameVersions?.[0] || data.version || 'N/A'}
           </p>
+          {data.modpack?.modpackVersion && (
+            <p className={`text-xs mt-0.5 truncate ${darkMode ? 'text-gray-500' : 'text-gray-400'}`} title={data.modpack.modpackVersion}>
+              {data.modpack.modpackVersion}
+            </p>
+          )}
         </div>
       </div>
 

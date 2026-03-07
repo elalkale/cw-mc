@@ -1110,11 +1110,12 @@ export function createServerRoutes(io) {
     if (!fs.existsSync(propsPath)) return res.json({ exists: false, properties: {} });
 
     const properties = {};
-    for (const line of fs.readFileSync(propsPath, 'utf-8').split('\n')) {
-      const m = line.match(/^([^#=\s][^=]*)=(.*)$/);
-      if (m && MANAGED_PROPS.includes(m[1].trim())) {
-        properties[m[1].trim()] = m[2].trim();
-      }
+    for (const line of fs.readFileSync(propsPath, 'utf-8').split(/\r?\n/)) {
+      const eq = line.indexOf('=');
+      if (eq === -1 || line.trimStart().startsWith('#')) continue;
+      const key = line.slice(0, eq).trim();
+      const val = line.slice(eq + 1).trim();
+      if (MANAGED_PROPS.includes(key)) properties[key] = val;
     }
     res.json({ exists: true, properties });
   });
@@ -1178,9 +1179,10 @@ export function createServerRoutes(io) {
     for (const [key, value] of Object.entries(properties)) {
       if (!MANAGED_PROPS.includes(key)) continue;
       const val = String(value);
-      const regex = new RegExp(`^(${key.replace('-', '\\-')}\\s*=).*$`, 'm');
+      const escapedKey = key.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
+      const regex = new RegExp(`^(${escapedKey}\\s*=).*$`, 'm');
       if (regex.test(content)) {
-        content = content.replace(regex, `$1${val}`);
+        content = content.replace(regex, `$1${val.replace(/\$/g, '$$$$')}`);
       } else {
         content += `\n${key}=${val}`;
       }

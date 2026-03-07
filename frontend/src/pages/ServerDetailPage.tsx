@@ -110,6 +110,15 @@ export default function ServerDetailPage({ servers, startServer, stopServer, for
                       src={`https://crafatar.com/avatars/${p.id}?overlay`}
                       alt={`Avatar de ${p.name}`}
                       className="w-8 h-8 rounded-lg flex-shrink-0 border border-purple-500/20"
+                      onError={(e) => {
+                        const img = e.currentTarget;
+                        if (!img.dataset.fallback) {
+                          img.dataset.fallback = '1';
+                          img.src = `https://minotar.net/avatar/${p.name}/32`;
+                        } else {
+                          img.style.display = 'none';
+                        }
+                      }}
                     />
                     <div className="min-w-0">
                       <p className={`text-sm font-semibold truncate ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
