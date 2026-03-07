@@ -3,7 +3,6 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Loader2, Layers } from 'lucide-react';
 import FilterSelect from '../components/FilterSelect';
 import { API_BASE, fetchWithToken } from '../lib/api';
-import modpacksData from '../resources/modpacks_with_server.json';
 
 import StatBadge      from '../components/StatBadge';
 import ModpackHero    from '../components/ModpackHero';
@@ -18,7 +17,14 @@ export default function ModpackDetail({ darkMode, onInstallStart, onInstallClear
   const { modId } = useParams();
   const navigate  = useNavigate();
 
-  const localPack = modpacksData.find(m => m.modId === Number(modId));
+  const [localPack, setLocalPack] = useState<any>(null);
+
+  useEffect(() => {
+    fetchWithToken(`${API_BASE}/api/modpacks`)
+      .then(r => r.json())
+      .then((data: any[]) => setLocalPack(data.find(m => m.modId === Number(modId)) ?? null))
+      .catch(() => {});
+  }, [modId]);
 
   const [cfMod, setCfMod] = useState(null);
 

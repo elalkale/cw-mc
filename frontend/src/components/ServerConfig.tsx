@@ -731,6 +731,7 @@ export default function ServerConfig({ server, serverVersion, darkMode }: Props)
           </>
         )}
       </section>
+
     </div>
   );
 }

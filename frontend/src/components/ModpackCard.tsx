@@ -58,8 +58,8 @@ export default function ModpackCard({ pack, cfMod, darkMode, onClick }) {
           </p>
         )}
 
-        {/* Loaders */}
-        {pack.modLoaders.length > 0 && (
+        {/* Loaders (solo si no hay versionInfo) */}
+        {!pack.versionInfo && pack.modLoaders.length > 0 && (
           <div className="flex flex-wrap gap-1">
             {pack.modLoaders.map(l => LOADER_NAMES[l] && (
               <span key={l} className={`px-1.5 py-0.5 rounded-full text-xs border ${darkMode ? (LOADER_COLORS[l] || 'bg-gray-500/15 text-gray-300 border-gray-500/25') : (LOADER_COLORS_LIGHT[l] || 'bg-gray-100 text-gray-600 border-gray-200')}`}>
@@ -71,11 +71,24 @@ export default function ModpackCard({ pack, cfMod, darkMode, onClick }) {
 
         {/* Versiones */}
         <div className="flex flex-wrap gap-1">
-          {pack.gameVersions.slice(0, 3).map(v => (
-            <span key={v} className={`px-1.5 py-0.5 rounded-lg text-xs border font-mono ${darkMode ? 'bg-gray-700/50 text-gray-400 border-gray-600/50' : 'bg-gray-100 text-gray-600 border-gray-200'}`}>
-              {v}
-            </span>
-          ))}
+          {pack.gameVersions.slice(0, 3).map(v => {
+            const info = pack.versionInfo?.[v];
+            const isBeta  = info?.releaseType === 2;
+            const isAlpha = info?.releaseType === 3;
+            const loaderNames = (info?.loaders ?? []).map(l => LOADER_NAMES[l]).filter(Boolean);
+            return (
+              <span key={v} className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-lg text-xs border font-mono ${darkMode ? 'bg-gray-700/50 text-gray-400 border-gray-600/50' : 'bg-gray-100 text-gray-600 border-gray-200'}`}>
+                {v}
+                {isBeta  && <span className={`text-[10px] font-bold not-italic ${darkMode ? 'text-yellow-400' : 'text-yellow-600'}`}>β</span>}
+                {isAlpha && <span className={`text-[10px] font-bold not-italic ${darkMode ? 'text-red-400' : 'text-red-500'}`}>α</span>}
+                {loaderNames.length > 0 && (
+                  <span className={`text-[9px] font-semibold ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                    {loaderNames.join('/')}
+                  </span>
+                )}
+              </span>
+            );
+          })}
           {pack.gameVersions.length > 3 && (
             <span className={`px-1.5 py-0.5 text-xs ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>
               +{pack.gameVersions.length - 3}

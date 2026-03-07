@@ -2,7 +2,6 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, Tag, Layers, LayoutGrid, ArrowUpDown, BookOpen, PackageSearch } from 'lucide-react';
 import { API_BASE, fetchWithToken } from '../lib/api';
-import modpacksData from '../resources/modpacks_with_server.json';
 import categoriesData from '../resources/categories.json';
 import FilterSelect from '../components/FilterSelect';
 import ModpackCard from '../components/ModpackCard';
@@ -10,38 +9,32 @@ import ModpackCard from '../components/ModpackCard';
 // ── Tablas estáticas ──────────────────────────────────────────────────────────
 
 const CATEGORY_MAP = Object.fromEntries(categoriesData.map(c => [c.id, c.name]));
-
 const LOADER_NAMES = { 1: 'Forge', 4: 'Fabric', 5: 'Quilt', 6: 'NeoForge' };
-
-const ALL_VERSIONS = [...new Set(modpacksData.flatMap(m => m.gameVersions))].sort((a, b) => {
-  const parse = v => v.split('.').map(Number);
-  const [ma, na, pa = 0] = parse(a);
-  const [mb, nb, pb = 0] = parse(b);
-  return mb - ma || nb - na || pb - pa;
-});
-
-const usedCategoryIds = new Set(modpacksData.flatMap(m => m.categories));
-const ALL_CATEGORIES  = [...usedCategoryIds]
-  .filter(id => CATEGORY_MAP[id])
-  .map(id => ({ id, name: CATEGORY_MAP[id] }))
-  .sort((a, b) => a.name.localeCompare(b.name));
-
 const PAGE_SIZE = 24;
 
-const VERSION_OPTIONS  = [{ value: '', label: 'Todas las versiones' }, ...ALL_VERSIONS.map(v => ({ value: v, label: v }))];
-const LOADER_OPTIONS   = [{ value: '', label: 'Todos los loaders' },   ...Object.entries(LOADER_NAMES).map(([id, name]) => ({ value: id, label: name }))];
-const CATEGORY_OPTIONS = [{ value: '', label: 'Todas las categorías' }, ...ALL_CATEGORIES.map(c => ({ value: String(c.id), label: c.name }))];
-const SORT_OPTIONS     = [
+const SORT_OPTIONS = [
   { value: 'downloads',  label: 'Más descargados' },
   { value: 'popularity', label: 'Popularidad'      },
   { value: 'date',       label: 'Más recientes'    },
   { value: 'name',       label: 'Nombre A–Z'       },
 ];
+const LOADER_OPTIONS = [{ value: '', label: 'Todos los loaders' }, ...Object.entries(LOADER_NAMES).map(([id, name]) => ({ value: id, label: name }))];
 
 // ── Componente principal ──────────────────────────────────────────────────────
 
 export default function ServerCatalog({ darkMode }) {
   const navigate = useNavigate();
+
+  const [modpacksData, setModpacksData] = useState<any[]>([]);
+  const [loadingData,  setLoadingData]  = useState(true);
+
+  useEffect(() => {
+    fetchWithToken(`${API_BASE}/api/modpacks`)
+      .then(r => r.json())
+      .then(d => setModpacksData(Array.isArray(d) ? d : []))
+      .catch(() => setModpacksData([]))
+      .finally(() => setLoadingData(false));
+  }, []);
 
   const [search,           setSearch]           = useState('');
   const [selectedVersion,  setSelectedVersion]  = useState('');
@@ -53,6 +46,22 @@ export default function ServerCatalog({ darkMode }) {
   const [cfCache,    setCfCache]    = useState({});
   const fetchedIds = useRef(new Set());
   const isFirstRender = useRef(true);
+
+  const VERSION_OPTIONS = useMemo(() => {
+    const versions = [...new Set(modpacksData.flatMap(m => m.gameVersions))].sort((a, b) => {
+      const parse = v => v.split('.').map(Number);
+      const [ma, na, pa = 0] = parse(a);
+      const [mb, nb, pb = 0] = parse(b);
+      return mb - ma || nb - na || pb - pa;
+    });
+    return [{ value: '', label: 'Todas las versiones' }, ...versions.map(v => ({ value: v, label: v }))];
+  }, [modpacksData]);
+
+  const CATEGORY_OPTIONS = useMemo(() => {
+    const usedIds = new Set(modpacksData.flatMap(m => m.categories));
+    const cats = [...usedIds].filter(id => CATEGORY_MAP[id]).map(id => ({ id, name: CATEGORY_MAP[id] })).sort((a, b) => a.name.localeCompare(b.name));
+    return [{ value: '', label: 'Todas las categorías' }, ...cats.map(c => ({ value: String(c.id), label: c.name }))];
+  }, [modpacksData]);
 
   useEffect(() => {
     if (isFirstRender.current) { isFirstRender.current = false; return; }
@@ -73,7 +82,7 @@ export default function ServerCatalog({ darkMode }) {
       case 'name':       sorted.sort((a, b) => a.name.localeCompare(b.name)); break;
     }
     return sorted;
-  }, [search, selectedVersion, selectedLoader, selectedCategory, sortBy]);
+  }, [modpacksData, search, selectedVersion, selectedLoader, selectedCategory, sortBy]);
 
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
   const paginated  = useMemo(() => filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), [filtered, page]);
@@ -127,7 +136,10 @@ export default function ServerCatalog({ darkMode }) {
             Catálogo de Modpacks
           </h1>
           <p className={`text-sm ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
-            <span className={`font-semibold ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{filtered.length.toLocaleString()}</span> modpacks con server pack disponible
+            {loadingData
+              ? <span className={darkMode ? 'text-gray-500' : 'text-gray-400'}>Cargando catálogo…</span>
+              : <><span className={`font-semibold ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{filtered.length.toLocaleString()}</span> modpacks con server pack disponible</>
+            }
           </p>
         </div>
 

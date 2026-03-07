@@ -222,10 +222,32 @@ router.post('/:name/mods/identify', async (req, res) => {
         }
       }
 
+      // Fetch file deps in batch to resolve required dependencies
+      const fileIds = Object.values(matchMap).map(m => m.fileId);
+      const fileDepsMap = {}; // fileId -> [requiredModId, ...]
+      if (fileIds.length) {
+        try {
+          const filesResp = await fetch(`${CF_BASE}/mods/files`, {
+            method: 'POST', headers: cfHeaders(),
+            body: JSON.stringify({ fileIds }),
+          });
+          for (const file of ((await filesResp.json())?.data || [])) {
+            fileDepsMap[file.id] = (file.dependencies || [])
+              .filter(d => d.relationType === 3)
+              .map(d => d.modId);
+          }
+        } catch {}
+      }
+
       for (const [fp, baseName] of Object.entries(fpToBase)) {
         const match = matchMap[Number(fp)];
         result.mods[baseName] = match
-          ? { recognized: true, modId: match.modId, fileId: match.fileId, gameVersions: match.gameVersions || [], ...modInfoMap[match.modId] }
+          ? {
+              recognized: true, modId: match.modId, fileId: match.fileId,
+              gameVersions: match.gameVersions || [],
+              deps: fileDepsMap[match.fileId] || [],
+              ...modInfoMap[match.modId],
+            }
           : { recognized: false };
       }
     } else {
@@ -657,7 +679,7 @@ router.post('/:name/datapacks/install', async (req, res) => {
   const { modId, fileId } = req.body;
   if (!modId || !fileId) return res.status(400).json({ error: 'Faltan parámetros: modId y fileId' });
 
-  const dir = path.join(state.cfg.dir, 'datapacks');
+  const dir = path.join(state.cfg.dir, 'world', 'datapacks');
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
   const datapacksJsonPath = path.join(state.cfg.dir, 'datapacks.json');
@@ -716,7 +738,7 @@ router.get('/:name/datapacks', async (req, res) => {
   const state = servers[name];
   if (!state) return res.status(404).json({ error: 'Servidor no encontrado' });
 
-  const dir = path.join(state.cfg.dir, 'datapacks');
+  const dir = path.join(state.cfg.dir, 'world', 'datapacks');
   if (!fs.existsSync(dir)) return res.json({ datapacks: [] });
 
   const datapacksJsonPath = path.join(state.cfg.dir, 'datapacks.json');
@@ -764,7 +786,7 @@ router.post('/:name/datapacks/toggle', async (req, res) => {
   const { filename } = req.body;
   if (!filename) return res.status(400).json({ error: 'filename requerido' });
 
-  const dir = path.join(state.cfg.dir, 'datapacks');
+  const dir = path.join(state.cfg.dir, 'world', 'datapacks');
   const oldPath = path.join(dir, filename);
   if (!fs.existsSync(oldPath)) return res.status(404).json({ error: 'Archivo no encontrado' });
 
@@ -786,7 +808,7 @@ router.delete('/:name/datapacks/:filename', async (req, res) => {
   if (!state) return res.status(404).json({ error: 'Servidor no encontrado' });
 
   const filename = decodeURIComponent(req.params.filename);
-  const dir = path.join(state.cfg.dir, 'datapacks');
+  const dir = path.join(state.cfg.dir, 'world', 'datapacks');
   const filePath = path.join(dir, filename);
   if (!filePath.startsWith(path.resolve(dir))) return res.status(403).json({ error: 'Acceso denegado' });
 

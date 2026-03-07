@@ -26,6 +26,7 @@ import settingsRoutes          from './routes/settings.js';
 import filesRoutes             from './routes/files.js';
 import modsRoutes              from './routes/mods.js';
 import curseforgeRoutes        from './routes/curseforge.js';
+import modpacksRoutes          from './routes/modpacks.js';
 import javaRoutes              from './routes/java.js';
 import { createServerRoutes, shutdown } from './routes/servers.js';
 
@@ -120,6 +121,7 @@ apiRouter.get('/me', (req, res) => res.json({ loggedIn: true, user: req.user }))
 apiRouter.use('/settings',   settingsRoutes);
 apiRouter.use('/files',      filesRoutes);
 apiRouter.use('/curseforge', curseforgeRoutes);
+apiRouter.use('/modpacks',  modpacksRoutes);
 apiRouter.use('/java',       javaRoutes);
 apiRouter.use('/',           createServerRoutes(io));
 apiRouter.use('/servers',       modsRoutes);

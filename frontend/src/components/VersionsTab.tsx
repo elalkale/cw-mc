@@ -190,15 +190,28 @@ export default function VersionsTab({
               {pagedFiles.map(file => (
                 <tr key={file.id} className={`transition-colors ${darkMode ? 'hover:bg-purple-500/5' : 'hover:bg-purple-50/60'}`}>
                   <td className="py-3 pr-4">
-                    <span className={`line-clamp-1 text-xs font-medium ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
-                      {file.displayName || file.fileName}
-                    </span>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className={`line-clamp-1 text-xs font-medium ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
+                        {file.displayName || file.fileName}
+                      </span>
+                      {file.releaseType === 2 && (
+                        <span className={`shrink-0 px-1.5 py-0.5 rounded-full text-[10px] font-bold border ${darkMode ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/25' : 'bg-yellow-50 text-yellow-600 border-yellow-200'}`}>β Beta</span>
+                      )}
+                      {file.releaseType === 3 && (
+                        <span className={`shrink-0 px-1.5 py-0.5 rounded-full text-[10px] font-bold border ${darkMode ? 'bg-red-500/10 text-red-400 border-red-500/25' : 'bg-red-50 text-red-500 border-red-200'}`}>α Alpha</span>
+                      )}
+                    </div>
                   </td>
                   <td className="py-3 pr-4">
                     <div className="flex flex-wrap gap-1">
                       {(file.gameVersions ?? []).filter(v => /^\d+\.\d+/.test(v)).slice(0, 3).map(v => (
                         <span key={v} className={`px-1.5 py-0.5 rounded-lg text-xs border font-mono ${darkMode ? 'bg-indigo-500/10 text-indigo-300 border-indigo-500/20' : 'bg-indigo-50 text-indigo-600 border-indigo-200/80'}`}>
                           {v}
+                        </span>
+                      ))}
+                      {(file.gameVersions ?? []).filter(v => ['Forge', 'Fabric', 'Quilt', 'NeoForge', 'ModLoader', 'Cauldron'].includes(v)).map(l => (
+                        <span key={l} className={`px-1.5 py-0.5 rounded-full text-[10px] font-semibold border ${darkMode ? 'bg-purple-500/10 text-purple-300 border-purple-500/20' : 'bg-purple-50 text-purple-600 border-purple-200'}`}>
+                          {l}
                         </span>
                       ))}
                     </div>
